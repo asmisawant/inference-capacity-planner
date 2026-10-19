@@ -141,7 +141,7 @@ def measured_configs(results: list[dict] | None = None, model: ModelSpec | None 
     model = load_model() if model is None else model
     eff = gpu_efficiency(results)
     out = []
-    for (gpu, quant), r in latest(results, "vllm").items():
+    for (gpu, quant), r in latest(results, "vllm", model.name).items():
         if gpu not in eff:
             continue
         try:

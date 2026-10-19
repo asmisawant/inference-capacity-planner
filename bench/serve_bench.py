@@ -17,7 +17,7 @@ import tempfile
 import time
 import urllib.request
 
-from bench.vllm_bench import MAX_MODEL_LEN, MODELS
+from bench.vllm_bench import MAX_MODEL_LEN, QUANTS, hf_model
 
 PORT = 8000
 # Scalar keys kept from vLLM's result file; per-request lists (texts, timings) are dropped.
@@ -60,7 +60,9 @@ def bench(model: str, prompt: int, output: int, num_prompts: int, rps: float, ou
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--quant", choices=sorted(MODELS), required=True)
+    ap.add_argument("--quant", choices=QUANTS, required=True)
+    ap.add_argument("--model", default="Qwen2.5-7B-Instruct")
+    ap.add_argument("--tp", type=int, default=1)
     ap.add_argument("--revision")
     ap.add_argument("--max-num-seqs", type=int, required=True)
     ap.add_argument("--prompt", type=int, required=True)
@@ -70,11 +72,11 @@ def main() -> None:
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
-    model, quantization = MODELS[args.quant]
+    model, quantization = hf_model(args.model, args.quant)
     serve = [
         "vllm", "serve", model, "--port", str(PORT), "--max-model-len", str(MAX_MODEL_LEN),
         "--max-num-seqs", str(args.max_num_seqs), "--gpu-memory-utilization", "0.92",
-        "--no-enable-prefix-caching", "--seed", "0",
+        "--no-enable-prefix-caching", "--seed", "0", "--tensor-parallel-size", str(args.tp),
     ]
     if args.revision:
         serve += ["--revision", args.revision]

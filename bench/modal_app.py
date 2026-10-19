@@ -33,7 +33,8 @@ image = (
     .entrypoint([])  # the image's entrypoint starts `vllm serve`
     .run_commands('command -v python || ln -s "$(command -v python3)" /usr/local/bin/python')
     .env({"HF_HOME": HF_CACHE, "HF_XET_HIGH_PERFORMANCE": "1"})
-    .add_local_python_source("bench", "capacity_planner")
+    # Keep non-Python files: the model registry and configs live in capacity_planner/data.
+    .add_local_python_source("bench", "capacity_planner", ignore=["**/__pycache__/**"])
 )
 
 
@@ -50,14 +51,19 @@ def download(repo_id: str) -> str:
 @app.cls(image=image, gpu="L4", volumes={HF_CACHE: hf_volume}, timeout=30 * 60)
 class Bench:
     @modal.method()
-    def run(self, suite: str, quant: str, revision: str | None = None, serve: dict | None = None) -> dict:
+    def run(
+        self, suite: str, quant: str, revision: str | None = None, serve: dict | None = None,
+        model: str | None = None, tp: int = 1,
+    ) -> dict:
         """Returns plain JSON types only: the caller (a GitHub runner) has no torch/vllm
         installed, so anything else (e.g. torch's TorchVersion str subclass) can't be
         unpickled there. Errors come back as text for the same reason."""
         import traceback
 
         from bench import micro
+        from capacity_planner.models import DEFAULT_MODEL
 
+        self._model_args = ["--model", model or DEFAULT_MODEL, "--tp", str(tp)]
         try:
             info = micro.gpu_info()  # nvidia-smi only, no CUDA context
             if suite == "micro":
@@ -117,7 +123,7 @@ class Bench:
     def _run_child(self, module: str, quant: str, revision: str | None, extra: list[str]):
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "out.json")
-            cmd = [sys.executable, "-m", module, "--quant", quant, "--out", out, *extra]
+            cmd = [sys.executable, "-m", module, "--quant", quant, *self._model_args, "--out", out, *extra]
             if revision:
                 cmd += ["--revision", revision]
             env = {**os.environ, "HF_HUB_OFFLINE": "1"}

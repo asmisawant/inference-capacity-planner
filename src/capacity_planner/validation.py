@@ -12,25 +12,38 @@ from pathlib import Path
 
 from . import roofline as rf
 from .gpus import GPUS
-from .models import load_model
+from .models import DEFAULT_MODEL, load_model
 
 RESULTS_DIR = Path(__file__).resolve().parents[2] / "results"
 NO_RESULTS = "_No benchmark results yet._"
 
 
 def load_results(results_dir: Path = RESULTS_DIR) -> list[dict]:
-    """Successful runs, oldest first. Later runs of the same (gpu, suite, quant) win in tables."""
+    """Successful runs, oldest first. Later runs of the same (gpu, suite, quant) win in tables.
+
+    Runs from before multi-model support carry no model/tp: they are Qwen-7B on one GPU.
+    """
     if not results_dir.exists():
         return []
     recs = [json.loads(p.read_text()) for p in sorted(results_dir.glob("*.json"))]
     recs = [r for r in recs if r.get("status") == "ok"]
+    for r in recs:
+        r.setdefault("model", DEFAULT_MODEL)
+        r.setdefault("tp", 1)
     return sorted(recs, key=lambda r: r["finished_at"])
 
 
-def latest(results: list[dict], suite: str) -> dict[tuple[str, str], dict]:
+def same_setup(r: dict, model: str = DEFAULT_MODEL, tp: int = 1) -> bool:
+    return r.get("model", DEFAULT_MODEL) == model and r.get("tp", 1) == tp
+
+
+def latest(
+    results: list[dict], suite: str, model: str = DEFAULT_MODEL, tp: int = 1
+) -> dict[tuple[str, str], dict]:
+    """Newest run per (gpu, quant) of `suite` for one model and TP degree."""
     out: dict[tuple[str, str], dict] = {}
     for r in results:
-        if r["suite"] == suite:
+        if r["suite"] == suite and (suite == "micro" or same_setup(r, model, tp)):
             out[(r["gpu"], r["quant"])] = r
     return dict(sorted(out.items(), key=lambda kv: (list(GPUS).index(kv[0][0]), kv[0][1])))
 

@@ -57,6 +57,7 @@ jobs:
         run: >
           python -m bench.launch --id "${{ matrix.id }}" --gpu "${{ matrix.gpu }}"
           --suite "${{ matrix.suite }}" --quant "${{ matrix.quant }}"
+          --model "${{ matrix.model }}" --tp "${{ matrix.tp }}"
           --timeout-min "${{ matrix.timeout_min }}" --out "out/${{ matrix.id }}.json"
           --serve '${{ toJSON(matrix.serve) }}'
       - if: always()

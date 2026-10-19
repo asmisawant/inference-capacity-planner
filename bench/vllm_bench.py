@@ -1,4 +1,4 @@
-"""vLLM offline benchmark: KV-cache capacity, TTFT and TPOT for Qwen2.5-7B-Instruct.
+"""vLLM offline benchmark: KV-cache capacity, TTFT and TPOT for one model on one GPU (or a TP group).
 
 Runs inside the Modal container as its own process (python -m bench.vllm_bench),
 so the parent can capture vLLM's logs, which hold the memory breakdown.
@@ -23,11 +23,24 @@ import random
 import statistics
 import time
 
-MODELS = {
-    "bf16": ("Qwen/Qwen2.5-7B-Instruct", None),
-    "fp8": ("Qwen/Qwen2.5-7B-Instruct", "fp8"),  # online FP8 weight quantization
-    "awq-int4": ("Qwen/Qwen2.5-7B-Instruct-AWQ", None),  # vLLM picks awq_marlin
-}
+QUANTS = ("bf16", "fp8", "awq-int4")
+
+
+def hf_model(model: str, quant: str) -> tuple[str, str | None]:
+    """(Hugging Face repo, vLLM `quantization` argument) for a registry model."""
+    from capacity_planner.models import registry
+
+    entry = registry()[model]
+    if quant == "bf16":
+        return entry.repo, None
+    if quant == "fp8":
+        return entry.repo, "fp8"  # online FP8 weight quantization
+    if quant == "awq-int4":
+        if not entry.awq_repo:
+            raise ValueError(f"no AWQ checkpoint for {model}")
+        return entry.awq_repo, None  # vLLM picks awq_marlin
+    raise ValueError(quant)
+
 
 MAX_MODEL_LEN = 4096
 MAX_NUM_SEQS = 256
@@ -42,11 +55,13 @@ DECODE_OUTPUT_LEN = 192
 DECODE_BATCHES = (1, 2, 4, 8, 16, 32, 64, 128, 256)
 
 _rng = random.Random(0)
+_vocab = 150_000  # set from the model config in main()
 
 
 def random_prompt(n: int) -> dict:
-    # Ordinary vocabulary ids; random so no two prompts share a prefix.
-    return {"prompt_token_ids": [_rng.randrange(1000, 150_000) for _ in range(n)]}
+    # Ordinary vocabulary ids (skipping the low, often special, ids); random so no two
+    # prompts share a prefix.
+    return {"prompt_token_ids": [_rng.randrange(1000, _vocab - 1000) for _ in range(n)]}
 
 
 def request_timing(out) -> dict:
@@ -67,7 +82,9 @@ def request_timing(out) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--quant", choices=sorted(MODELS), required=True)
+    ap.add_argument("--quant", choices=QUANTS, required=True)
+    ap.add_argument("--model", default="Qwen2.5-7B-Instruct")
+    ap.add_argument("--tp", type=int, default=1)
     ap.add_argument("--revision")
     ap.add_argument("--gpu-memory-utilization", type=float, default=0.92)
     ap.add_argument("--compile-backend", help="override vLLM's compilation backend (fallback only)")
@@ -77,10 +94,15 @@ def main() -> None:
     import vllm
     from vllm import LLM, SamplingParams
 
-    model, quantization = MODELS[args.quant]
+    global _vocab
+    from capacity_planner.models import load_model
+
+    _vocab = load_model(args.model).vocab_size
+    model, quantization = hf_model(args.model, args.quant)
     t0 = time.perf_counter()
     llm = LLM(
         model=model,
+        tensor_parallel_size=args.tp,
         revision=args.revision,
         quantization=quantization,
         dtype="auto",
@@ -98,6 +120,7 @@ def main() -> None:
     result = {
         "vllm_version": vllm.__version__,
         "model": model,
+        "tensor_parallel_size": args.tp,
         "revision": args.revision,
         "quantization": quantization,
         "dtype": str(llm.llm_engine.model_config.dtype),

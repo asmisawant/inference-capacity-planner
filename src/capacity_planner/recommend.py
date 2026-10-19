@@ -32,6 +32,7 @@ from dataclasses import dataclass
 
 from .calibration import MeasuredConfig, measured_configs
 from .roofline import DEFAULT_GPU_MEMORY_UTILIZATION
+from .validation import same_setup
 
 ENGINE = "vLLM 0.30.0"
 
@@ -293,10 +294,11 @@ def serve_runs(results: list[dict], configs: list[MeasuredConfig]) -> list[tuple
     by_key = {c.key: c for c in configs}
     out = []
     for r in results:
-        if r["suite"] == "serve" and (r["gpu"], r["quant"]) in by_key:
+        c = by_key.get((r["gpu"], r["quant"]))
+        if r["suite"] == "serve" and c is not None and same_setup(r, c.model.name):
             s = r["serve"]
             w = Workload(s["prompt"], s["output"], s["rps"], ttft_slo_s=1e9, tpot_slo_s=1e9)
-            out.append((r, by_key[(r["gpu"], r["quant"])], w))
+            out.append((r, c, w))
     return out
 
 

@@ -100,9 +100,14 @@ class ModelSpec:
         return self.total_params - self.embedding_params - self.lm_head_params
 
     # --- per-token costs --------------------------------------------------
-    def kv_bytes_per_token(self, kv_dtype: str = "bf16") -> float:
-        """K and V for every layer: 2 * layers * kv_heads * head_dim * bytes."""
-        return 2 * self.num_layers * self.kv_dim * DTYPE_BYTES[kv_dtype]
+    def kv_bytes_per_token(self, kv_dtype: str = "bf16", tp: int = 1) -> float:
+        """K and V for every layer: 2 * layers * kv_heads * head_dim * bytes.
+
+        With tensor parallelism each GPU holds ceil(kv_heads / tp) heads (replicated when
+        tp exceeds the number of KV heads); this is the per-GPU figure.
+        """
+        heads = -(-self.num_kv_heads // tp)
+        return 2 * self.num_layers * heads * self.head_dim * DTYPE_BYTES[kv_dtype]
 
     def linear_flops_per_token(self, include_lm_head: bool = True) -> float:
         """2 FLOPs (multiply + add) per weight per token for every matmul."""

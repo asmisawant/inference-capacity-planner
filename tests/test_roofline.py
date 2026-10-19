@@ -151,3 +151,58 @@ def test_invalid_inputs(m):
         rf.prefill(g, m, BF16, 0)
     with pytest.raises(ValueError):
         rf.decode_step(g, m, BF16, 0, 10)
+
+
+# --- tensor parallelism ------------------------------------------------------
+
+@pytest.fixture
+def m32():
+    return load_model("Qwen2.5-32B-Instruct")
+
+
+def test_tp1_has_no_communication(m):
+    h100 = get_gpu("H100")
+    assert rf.allreduce_s(h100, m, 1000, 1) == 0.0
+    assert rf.decode_step(h100, m, BF16, 8, 1024).comm_s == 0.0
+    assert rf.decode_step(h100, m, BF16, 8, 1024, tp=1) == rf.decode_step(h100, m, BF16, 8, 1024)
+
+
+def test_allreduce_hand_calculation(m32):
+    h100 = get_gpu("H100")  # 450 GB/s per direction
+    tokens, tp = 100, 2
+    per_call = 2 * (tp - 1) / tp * tokens * 5120 * 2 / 450e9
+    assert rf.allreduce_s(h100, m32, tokens, tp) == pytest.approx(2 * 64 * per_call)
+
+
+def test_tp2_halves_weight_reads_and_adds_comm(m32):
+    h100 = get_gpu("H100")
+    one = rf.decode_step(h100, m32, BF16, 1, 1024)
+    two = rf.decode_step(h100, m32, BF16, 1, 1024, tp=2)
+    kv1 = 1025 * m32.kv_bytes_per_token()
+    assert two.bytes == pytest.approx((one.bytes - kv1) / 2 + kv1 / 2)
+    assert two.flops == pytest.approx(one.flops / 2)
+    assert two.comm_s > 0
+    assert two.time_s == pytest.approx(max(two.compute_s, two.memory_s) + two.comm_s)
+    assert two.time_s < one.time_s
+
+
+def test_kv_heads_split_but_replicate_past_head_count(m32):
+    assert m32.num_kv_heads == 8
+    assert m32.kv_bytes_per_token(tp=2) == m32.kv_bytes_per_token() / 2
+    assert m32.kv_bytes_per_token(tp=8) == m32.kv_bytes_per_token() / 8
+    assert m32.kv_bytes_per_token(tp=16) == m32.kv_bytes_per_token(tp=8)  # one head per GPU, replicated
+
+
+def test_kv_capacity_with_tp(m32):
+    a100 = get_gpu("A100-80GB")
+    free = 80 * 2**30 * 0.92 - 2 * m32.total_params / 2
+    assert rf.kv_cache_capacity_tokens(a100, m32, BF16, tp=2) == int(free // m32.kv_bytes_per_token(tp=2))
+    # 32B in BF16 (~65 GB) doesn't leave room for KV on one 40 GB card
+    assert rf.kv_cache_capacity_tokens(get_gpu("A100-40GB"), m32, BF16) == 0
+
+
+def test_tp_requires_nvlink(m):
+    with pytest.raises(ValueError):
+        rf.decode_step(get_gpu("L4"), m, BF16, 1, 512, tp=2)
+    with pytest.raises(ValueError):
+        rf.prefill(get_gpu("H100"), m, BF16, 512, tp=0)

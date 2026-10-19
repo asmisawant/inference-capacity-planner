@@ -1,17 +1,18 @@
 {
-  "cost_usd_upper_bound": 0.021821629567115402,
-  "error": "InvalidError: Please add a payment method to use L4 GPU functions.",
-  "finished_at": "2026-10-19T08:01:42+00:00",
-  "git_sha": "c600ab57d83a359bd85295996913b8bb46ec59fa",
-  "github_run_url": "https://github.com/asmisawant/inference-capacity-planner/actions/runs/39219636897",
+  "cost_usd_upper_bound": 0.056228542663464595,
+  "error": "RuntimeError: vllm_bench exited 1; last log lines:\n(EngineCore pid=25)                 ^^^^^^^^^^^^^^^\n(EngineCore pid=25)   File \"/usr/local/lib/python3.12/site-packages/flashinfer/jit/cpp_ext.py\", line 61, in get_cuda_path\n(EngineCore pid=25)     raise RuntimeError(\n(EngineCore pid=25) RuntimeError: Could not find nvcc and default cuda_home='/usr/local/cuda' doesn't exist\nINFO 10-19 08:09:32 [utils.py:632] [shutdown] Process manager: send sigterm to process EngineCore\nTraceback (most recent call last):\n  File \"<frozen runpy>\", line 198, in _run_module_as_main\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"/root/bench/vllm_bench.py\", line 170, in <module>\n    main()\n  File \"/root/bench/vllm_bench.py\", line 74, in main\n    llm = LLM(\n          ^^^^\n  File \"/usr/local/lib/python3.12/site-packages/vllm/entrypoints/llm.py\", line 343, in __init__\n    self.llm_engine = LLMEngine.from_engine_args(\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.12/site-packages/vllm/v1/engine/llm_engine.py\", line 184, in from_engine_args\n    return cls(\n           ^^^^\n  File \"/usr/local/lib/python3.12/site-packages/vllm/v1/engine/llm_engine.py\", line 109, in __init__\n    self.engine_core = EngineCoreClient.make_client(\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.12/site-packages/vllm/v1/engine/core_client.py\", line 122, in make_client\n    return SyncMPClient(\n           ^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.12/site-packages/vllm/tracing/otel.py\", line 178, in sync_wrapper\n    return func(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.12/site-packages/vllm/v1/engine/core_client.py\", line 880, in __init__\n    super().__init__(\n  File \"/usr/local/lib/python3.12/site-packages/vllm/v1/engine/core_client.py\", line 656, in __init__\n    with launch_core_engines(\n         ^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.12/contextlib.py\", line 144, in __exit__\n    next(self.gen)\n  File \"/usr/local/lib/python3.12/site-packages/vllm/v1/engine/utils.py\", line 1240, in launch_core_engines\n    wait_for_engine_startup(\n  File \"/usr/local/lib/python3.12/site-packages/vllm/v1/engine/utils.py\", line 1320, in wait_for_engine_startup\n    raise RuntimeError(\nRuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}\n",
+  "finished_at": "2026-10-19T08:09:38+00:00",
+  "git_sha": "709efe0f4243683b31a9266757750070c9aa8cfb",
+  "github_run_url": "https://github.com/asmisawant/inference-capacity-planner/actions/runs/39220278902",
   "gpu": "L4",
   "id": "002-l4-vllm-bf16",
   "modal_gpu": "L4",
+  "model_revision": "a09a35458c702b33eeacc393d103063234e8bc28",
   "price_per_hour": 0.7992,
   "quant": "bf16",
-  "reached_modal": false,
-  "started_at": "2026-10-19T08:00:13+00:00",
+  "reached_modal": true,
+  "started_at": "2026-10-19T08:05:48+00:00",
   "status": "error",
   "suite": "vllm",
-  "wall_s": 89.359662437
+  "wall_s": 230.25611246299997
 }

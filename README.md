@@ -94,7 +94,7 @@ GPU runs are launched by GitHub Actions (`.github/workflows/bench.yml`) on [Moda
 - **Results:** each run is committed as `results/<id>.json` together with the tables below, which the workflow regenerates.
 
 Spend so far: <!-- BEGIN GENERATED: bench_spend -->
-6 runs (0 succeeded), at most **$0.04** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
+8 runs (0 succeeded), at most **$0.10** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
 <!-- END GENERATED: bench_spend -->
 
 ### Measured GPU throughput vs datasheet

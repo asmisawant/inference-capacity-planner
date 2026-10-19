@@ -1,17 +1,77 @@
 {
-  "cost_usd_upper_bound": 0.0166681438380358,
-  "error": "ResourceExhaustedError: App create rate limit exceeded. Please wait and retry.",
-  "finished_at": "2026-10-19T08:30:16+00:00",
-  "git_sha": "556613b1900d0bb72255afa31d48cc5e4d152202",
-  "github_run_url": "https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807",
+  "cost_usd_upper_bound": 0.0135231393070378,
+  "finished_at": "2026-10-19T08:42:21+00:00",
+  "git_sha": "9b823b2990ff73cdada740054969c5d60f46951e",
+  "github_run_url": "https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223773836",
   "gpu": "A100-80GB",
+  "gpu_call_s": 14.964450165000002,
   "id": "009-a100-80gb-micro",
   "modal_gpu": "A100-80GB",
   "price_per_hour": 2.4984,
   "quant": "bf16",
-  "reached_modal": false,
-  "started_at": "2026-10-19T08:29:54+00:00",
-  "status": "error",
+  "reached_modal": true,
+  "result": {
+    "gpu_info": {
+      "clocks.max.memory": "1593",
+      "clocks.max.sm": "1410",
+      "driver_version": "610.57.04",
+      "memory.total": "81920",
+      "name": "NVIDIA A100-SXM4-80GB",
+      "power.limit": "400.00"
+    },
+    "micro": {
+      "bandwidth": {
+        "best": 1759.3557104823194,
+        "best_ms": 1.2206079959869385,
+        "bytes_per_iter": 2147483648,
+        "median": 1752.006633385889,
+        "median_ms": 1.2257280349731445,
+        "unit": "GB/s"
+      },
+      "gemv_bandwidth": {
+        "best": 1760.8329305697437,
+        "best_ms": 1.2195839881896973,
+        "bytes_per_iter": 2147483648,
+        "median": 1745.444930316681,
+        "median_ms": 1.2303359508514404,
+        "unit": "GB/s"
+      },
+      "matmul": {
+        "bf16": {
+          "best": 254.62218873312793,
+          "best_ms": 4.31820821762085,
+          "median": 254.38092410478447,
+          "median_ms": 4.322303771972656,
+          "n": 8192,
+          "unit": "TFLOPS"
+        },
+        "fp8": {
+          "error": "RuntimeError: torch._scaled_mm is only supported on CUDA devices with compute capability >= 9.0 or 8.9, or ROCm MI300+",
+          "n": 8192,
+          "unit": "TFLOPS"
+        },
+        "int8": {
+          "best": 412.97762349112423,
+          "best_ms": 2.662400007247925,
+          "median": 407.956617284578,
+          "median_ms": 2.6951680183410645,
+          "n": 8192,
+          "unit": "TFLOPS"
+        }
+      },
+      "torch_info": {
+        "compute_capability": "8.0",
+        "cuda_version": "13.0",
+        "sm_count": 108,
+        "torch_name": "NVIDIA A100-SXM4-80GB",
+        "torch_version": "2.13.0+cu130",
+        "total_memory_bytes": 85118156800
+      }
+    }
+  },
+  "start_attempts": 1,
+  "started_at": "2026-10-19T08:42:04+00:00",
+  "status": "ok",
   "suite": "micro",
-  "wall_s": 21.834089387
+  "wall_s": 17.714355917
 }

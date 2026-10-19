@@ -94,7 +94,7 @@ GPU runs are launched by GitHub Actions (`.github/workflows/bench.yml`) on [Moda
 - **Results:** each run is committed as `results/<id>.json` together with the tables below, which the workflow regenerates.
 
 Spend so far: <!-- BEGIN GENERATED: bench_spend -->
-27 runs (15 succeeded), at most **$1.68** of GPU time (runner wall-clock Ã— Modal GPU price Ã— 1.1 for CPU/RAM).
+31 runs (18 succeeded), at most **$2.05** of GPU time (runner wall-clock Ã— Modal GPU price Ã— 1.1 for CPU/RAM).
 <!-- END GENERATED: bench_spend -->
 
 ### Measured GPU throughput vs datasheet
@@ -105,6 +105,7 @@ Spend so far: <!-- BEGIN GENERATED: bench_spend -->
 | L4 | NVIDIA L4 | 22.1 / 24 | 259 (86%) | 230 (77%) | 53 (44%) | 92 (38%) | 128 (53%) | [005-l4-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39222305725) |
 | A10G | NVIDIA A10 | 22.1 / 24 | 498 (83%) | 484 (81%) | 77 (111%) | unsupported | 147 (â€“) | [007-a10g-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
 | A100-40GB | NVIDIA A100-SXM4-40GB | 39.5 / 40 | 1,416 (91%) | 1,381 (89%) | 262 (84%) | unsupported | 408 (65%) | [008-a100-40gb-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
+| A100-80GB | NVIDIA A100-SXM4-80GB | 79.3 / 80 | 1,745 (86%) | 1,752 (86%) | 254 (82%) | unsupported | 408 (65%) | [009-a100-80gb-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223773836) |
 | H100 | NVIDIA H100 80GB HBM3 | 79.2 / 80 | 2,863 (85%) | 2,998 (89%) | 791 (80%) | 1431 (72%) | 874 (44%) | [010-h100-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
 <!-- END GENERATED: measured_gpu -->
 
@@ -119,8 +120,10 @@ The roofline KV capacity assumes zero overhead. "Non-KV overhead" = GPU memory Ã
 | L4 | bf16 | 14.29 / 14.19 | 3.25 | 3.15 | 60,816 / 147,826 | [006-l4-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39222305725) |  |
 | L4 | fp8 | 8.17 / 8.11 | 10.17 | 2.35 | 190,512 / 261,618 | [015-l4-vllm-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |  |
 | A10G | awq-int4 | 5.29 / 5.19 | 13.16 | 2.24 | 246,480 / 316,292 | [019-a10g-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |  |
+| A10G | bf16 | 14.29 / 14.19 | 3.23 | 3.17 | 60,512 / 147,826 | [011-a10g-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223773836) |  |
 | A100-40GB | bf16 | 14.29 / 14.19 | 19.25 | 3.26 | 360,528 / 423,452 | [012-a100-40gb-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |  |
 | A100-80GB | awq-int4 | 5.29 / 5.19 | 65.76 | 2.55 | 1,231,408 / 1,280,982 | [020-a100-80gb-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |  |
+| A100-80GB | bf16 | 14.29 / 14.19 | 55.83 | 3.48 | 1,045,408 / 1,112,516 | [013-a100-80gb-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223773836) |  |
 | H100 | awq-int4 | 5.38 / 5.19 | 64.25 | 3.65 | 1,203,072 / 1,280,982 | [021-h100-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |  |
 | H100 | bf16 | 14.29 / 14.19 | 55.28 | 3.71 | 1,035,104 / 1,112,516 | [014-h100-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |  |
 | H100 | fp8 | 8.17 / 8.11 | 61.37 | 3.74 | 1,149,168 / 1,226,308 | [017-h100-vllm-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |  |
@@ -151,6 +154,11 @@ The roofline KV capacity assumes zero overhead. "Non-KV overhead" = GPU memory Ã
 | A10G | awq-int4 | 1024 | 227.8 | 193.9 | 1.17 |
 | A10G | awq-int4 | 2048 | 453.7 | 393.9 | 1.15 |
 | A10G | awq-int4 | 4000 | 906.7 | 791.6 | 1.15 |
+| A10G | bf16 | 128 | 40.7 | 25.4 | 1.60 |
+| A10G | bf16 | 512 | 108.9 | 96.2 | 1.13 |
+| A10G | bf16 | 1024 | 211.2 | 193.9 | 1.09 |
+| A10G | bf16 | 2048 | 413.7 | 393.9 | 1.05 |
+| A10G | bf16 | 4000 | 928.4 | 791.6 | 1.17 |
 | A100-40GB | bf16 | 128 | 20.1 | 9.8 | 2.05 |
 | A100-40GB | bf16 | 512 | 36.9 | 21.6 | 1.71 |
 | A100-40GB | bf16 | 1024 | 67.8 | 43.5 | 1.56 |
@@ -161,6 +169,11 @@ The roofline KV capacity assumes zero overhead. "Non-KV overhead" = GPU memory Ã
 | A100-80GB | awq-int4 | 1024 | 91.2 | 43.5 | 2.10 |
 | A100-80GB | awq-int4 | 2048 | 181.9 | 88.4 | 2.06 |
 | A100-80GB | awq-int4 | 4000 | 358.7 | 177.6 | 2.02 |
+| A100-80GB | bf16 | 128 | 15.1 | 7.5 | 2.02 |
+| A100-80GB | bf16 | 512 | 36.5 | 21.6 | 1.69 |
+| A100-80GB | bf16 | 1024 | 67.7 | 43.5 | 1.56 |
+| A100-80GB | bf16 | 2048 | 128.8 | 88.4 | 1.46 |
+| A100-80GB | bf16 | 4000 | 259.8 | 177.6 | 1.46 |
 | H100 | awq-int4 | 128 | 7.6 | 1.7 | 4.47 |
 | H100 | awq-int4 | 512 | 14.4 | 6.8 | 2.11 |
 | H100 | awq-int4 | 1024 | 24.8 | 13.7 | 1.81 |
@@ -219,6 +232,13 @@ Each batch of 512-token prompts runs twice, with 64 and with 192 output tokens. 
 | A10G | awq-int4 | 64 | 24.70 | 13.21 | 1.87 | 2,591 | 0.118 | 37.61 |
 | A10G | awq-int4 | 128 | 45.93 | 26.33 | 1.74 | 2,787 | 0.110 | 77.27 |
 | A10G | awq-int4 | 256 | 90.14 | 52.65 | 1.71 | 2,840 | 0.108 | 165.59 |
+| A10G | bf16 | 1 | 32.38 | 25.45 | 1.27 | 31 | 9.893 | 32.39 |
+| A10G | bf16 | 2 | 32.56 | 25.51 | 1.28 | 61 | 4.974 | 32.80 |
+| A10G | bf16 | 4 | 32.84 | 25.63 | 1.28 | 122 | 2.509 | 32.86 |
+| A10G | bf16 | 8 | 33.41 | 25.88 | 1.29 | 239 | 1.276 | 33.46 |
+| A10G | bf16 | 16 | 34.78 | 26.37 | 1.32 | 460 | 0.664 | 34.59 |
+| A10G | bf16 | 32 | 34.67 | 27.35 | 1.27 | 923 | 0.331 | 38.63 |
+| A10G | bf16 | 64 | 39.54 | 29.31 | 1.35 | 1,619 | 0.189 | 51.78 |
 | A100-40GB | bf16 | 1 | 12.22 | 9.82 | 1.24 | 82 | 7.121 | 12.23 |
 | A100-40GB | bf16 | 2 | 12.02 | 9.84 | 1.22 | 166 | 3.504 | 12.05 |
 | A100-40GB | bf16 | 4 | 13.41 | 9.89 | 1.36 | 298 | 1.954 | 13.59 |
@@ -237,6 +257,15 @@ Each batch of 512-token prompts runs twice, with 64 and with 192 output tokens. 
 | A100-80GB | awq-int4 | 64 | 11.31 | 3.89 | 2.91 | 5,659 | 0.123 | 14.47 |
 | A100-80GB | awq-int4 | 128 | 18.07 | 5.91 | 3.06 | 7,082 | 0.098 | 30.54 |
 | A100-80GB | awq-int4 | 256 | 32.99 | 11.81 | 2.79 | 7,759 | 0.089 | 60.44 |
+| A100-80GB | bf16 | 1 | 10.08 | 7.49 | 1.35 | 99 | 6.998 | 10.10 |
+| A100-80GB | bf16 | 2 | 10.10 | 7.51 | 1.35 | 198 | 3.504 | 10.12 |
+| A100-80GB | bf16 | 4 | 10.14 | 7.54 | 1.34 | 395 | 1.759 | 10.13 |
+| A100-80GB | bf16 | 8 | 10.42 | 7.61 | 1.37 | 768 | 0.904 | 10.43 |
+| A100-80GB | bf16 | 16 | 10.81 | 7.76 | 1.39 | 1,479 | 0.469 | 10.79 |
+| A100-80GB | bf16 | 32 | 11.39 | 8.05 | 1.42 | 2,809 | 0.247 | 12.59 |
+| A100-80GB | bf16 | 64 | 13.98 | 8.62 | 1.62 | 4,579 | 0.152 | 18.09 |
+| A100-80GB | bf16 | 128 | 16.61 | 9.78 | 1.70 | 7,705 | 0.090 | 24.99 |
+| A100-80GB | bf16 | 256 | 25.90 | 12.08 | 2.14 | 9,884 | 0.070 | 45.90 |
 | H100 | awq-int4 | 1 | 4.25 | 1.67 | 2.54 | 235 | 4.662 | 4.30 |
 | H100 | awq-int4 | 2 | 4.39 | 1.68 | 2.60 | 456 | 2.407 | 4.35 |
 | H100 | awq-int4 | 4 | 4.36 | 1.71 | 2.55 | 918 | 1.196 | 4.37 |

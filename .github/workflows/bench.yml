@@ -1,0 +1,102 @@
+name: bench
+
+# GPU benchmarks on Modal. Runs only what bench/requests.json lists and the
+# ledger hasn't seen, and refuses to start if the worst case would exceed the
+# budget in that file. Results and the ledger are committed back to the branch.
+on:
+  push:
+    paths: ["bench/requests.json"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
+    steps:
+      # Branch head, not the triggering commit: an earlier queued run may have
+      # committed ledger entries since, and planning without them would re-run them.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - id: plan
+        run: python -m bench.runs plan --github-output "$GITHUB_OUTPUT"
+
+  run:
+    needs: plan
+    if: needs.plan.outputs.count != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      max-parallel: 2  # Modal rate-limits app creation
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e . "modal==1.6.2"
+      - name: Run on Modal
+        run: >
+          python -m bench.launch --id "${{ matrix.id }}" --gpu "${{ matrix.gpu }}"
+          --suite "${{ matrix.suite }}" --quant "${{ matrix.quant }}"
+          --timeout-min "${{ matrix.timeout_min }}" --out "out/${{ matrix.id }}.json"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: result-${{ matrix.id }}
+          path: out/
+          if-no-files-found: ignore
+
+  collect:
+    needs: [plan, run]
+    if: always() && needs.plan.outputs.count != '0'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: result-*
+          merge-multiple: true
+          path: out/
+      - name: File results, update ledger and README
+        run: |
+          mkdir -p out
+          python -m bench.runs collect out/
+          python -m capacity_planner.report --update-readme
+          python -m bench.runs spent
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add results README.md
+          git diff --cached --quiet && exit 0
+          git commit -m "bench: results from run ${{ github.run_id }}"
+          for i in 1 2 3 4; do
+            git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep $((2 ** i))
+          done
+          exit 1

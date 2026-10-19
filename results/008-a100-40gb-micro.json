@@ -1,0 +1,76 @@
+{
+  "cost_usd_upper_bound": 0.017926381619809306,
+  "finished_at": "2026-10-19T08:30:22+00:00",
+  "git_sha": "556613b1900d0bb72255afa31d48cc5e4d152202",
+  "github_run_url": "https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807",
+  "gpu": "A100-40GB",
+  "gpu_call_s": 10.050190661000002,
+  "id": "008-a100-40gb-micro",
+  "modal_gpu": "A100-40GB",
+  "price_per_hour": 2.0988,
+  "quant": "bf16",
+  "reached_modal": true,
+  "result": {
+    "gpu_info": {
+      "clocks.max.memory": "1215",
+      "clocks.max.sm": "1410",
+      "driver_version": "610.57.04",
+      "memory.total": "40960",
+      "name": "NVIDIA A100-SXM4-40GB",
+      "power.limit": "400.00"
+    },
+    "micro": {
+      "bandwidth": {
+        "best": 1384.2587359695128,
+        "best_ms": 1.551360011100769,
+        "bytes_per_iter": 2147483648,
+        "median": 1381.0681252696284,
+        "median_ms": 1.5549440383911133,
+        "unit": "GB/s"
+      },
+      "gemv_bandwidth": {
+        "best": 1420.8347396490317,
+        "best_ms": 1.511423945426941,
+        "bytes_per_iter": 2147483648,
+        "median": 1416.037826842857,
+        "median_ms": 1.516543984413147,
+        "unit": "GB/s"
+      },
+      "matmul": {
+        "bf16": {
+          "best": 264.6639989428437,
+          "best_ms": 4.154367923736572,
+          "median": 261.69677642908186,
+          "median_ms": 4.20147180557251,
+          "n": 8192,
+          "unit": "TFLOPS"
+        },
+        "fp8": {
+          "error": "RuntimeError: torch._scaled_mm is only supported on CUDA devices with compute capability >= 9.0 or 8.9, or ROCm MI300+",
+          "n": 8192,
+          "unit": "TFLOPS"
+        },
+        "int8": {
+          "best": 431.91544393219925,
+          "best_ms": 2.545664072036743,
+          "median": 408.4221475901309,
+          "median_ms": 2.692095994949341,
+          "n": 8192,
+          "unit": "TFLOPS"
+        }
+      },
+      "torch_info": {
+        "compute_capability": "8.0",
+        "cuda_version": "13.0",
+        "sm_count": 108,
+        "torch_name": "NVIDIA A100-SXM4-40GB",
+        "torch_version": "2.13.0+cu130",
+        "total_memory_bytes": 42429251584
+      }
+    }
+  },
+  "started_at": "2026-10-19T08:29:55+00:00",
+  "status": "ok",
+  "suite": "micro",
+  "wall_s": 27.953191361000002
+}

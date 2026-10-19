@@ -30,7 +30,7 @@ class GPUSpec:
     fp8_tflops: float | None
     int8_tops: float | None
     price_per_hour: float
-    modal_gpu: str  # the string passed to Modal's `gpu=` argument
+    modal_gpu: str  # the string passed to Modal's `gpu=` argument (https://modal.com/docs/guide/gpu)
     spec_source: str
     price_source: str = MODAL_PRICE_SOURCE
     notes: tuple[str, ...] = field(default_factory=tuple)
@@ -76,17 +76,17 @@ GPUS: dict[str, GPUSpec] = {
         name="A10G",
         memory_gib=24,
         mem_bw_gbs=600,
-        bf16_tflops=70,
+        bf16_tflops=125,  # datasheet: 250 with sparsity
         fp8_tflops=None,  # Ampere: no FP8 tensor cores
-        int8_tops=None,  # no published figure for the A10G
+        int8_tops=250,  # datasheet: 500 with sparsity
         price_per_hour=1.10,
         modal_gpu="A10G",
-        spec_source="https://flopper.io/compare/nvidia-a10-24gb-vs-nvidia-a10g-24gb (third-party)",
+        spec_source="https://www.nvidia.com/en-us/data-center/products/a10-gpu/ (A10 datasheet)",
         price_source="Modal blog GPU table, Jan 2025, via search (unverified)",
         notes=(
-            "NVIDIA publishes no A10G datasheet (AWS-only variant of the A10). "
-            "70 TFLOPS is a third-party figure; the A10's 125 TFLOPS does not apply. "
-            "Step 2 microbenchmarks should confirm it.",
+            "Modal's gpu='A10G' runs on an NVIDIA A10 (nvidia-smi, runs 007/011/019), so the "
+            "spec is the A10 datasheet. It replaced a third-party A10G figure of 70 BF16 "
+            "TFLOPS, which run 007 measured above (77 TFLOPS).",
         ),
     ),
     "A100-40GB": GPUSpec(
@@ -121,7 +121,7 @@ GPUS: dict[str, GPUSpec] = {
         fp8_tflops=1978.9,  # datasheet: 3,958 with sparsity
         int8_tops=1978.9,
         price_per_hour=_per_second_to_hour(0.001097),
-        modal_gpu="H100",
+        modal_gpu="H100!",  # "!" stops Modal upgrading the request to an H200
         spec_source="https://www.nvidia.com/en-us/data-center/h100/ (H100 SXM datasheet)",
         notes=("Assumes Modal's H100 is the SXM part.",),
     ),

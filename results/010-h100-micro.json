@@ -1,0 +1,79 @@
+{
+  "cost_usd_upper_bound": 0.018873148863635,
+  "finished_at": "2026-10-19T08:30:07+00:00",
+  "git_sha": "556613b1900d0bb72255afa31d48cc5e4d152202",
+  "github_run_url": "https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807",
+  "gpu": "H100",
+  "gpu_call_s": 10.570567610000005,
+  "id": "010-h100-micro",
+  "modal_gpu": "H100!",
+  "price_per_hour": 3.9492,
+  "quant": "bf16",
+  "reached_modal": true,
+  "result": {
+    "gpu_info": {
+      "clocks.max.memory": "2619",
+      "clocks.max.sm": "1980",
+      "driver_version": "610.57.04",
+      "memory.total": "81559",
+      "name": "NVIDIA H100 80GB HBM3",
+      "power.limit": "700.00"
+    },
+    "micro": {
+      "bandwidth": {
+        "best": 3006.669472787478,
+        "best_ms": 0.7142400145530701,
+        "bytes_per_iter": 2147483648,
+        "median": 2998.206759427272,
+        "median_ms": 0.7162560224533081,
+        "unit": "GB/s"
+      },
+      "gemv_bandwidth": {
+        "best": 2868.63574490153,
+        "best_ms": 0.7486079931259155,
+        "bytes_per_iter": 2147483648,
+        "median": 2863.3115306666664,
+        "median_ms": 0.75,
+        "unit": "GB/s"
+      },
+      "matmul": {
+        "bf16": {
+          "best": 793.4541457708893,
+          "best_ms": 1.3857280015945435,
+          "median": 791.3708311563742,
+          "median_ms": 1.3893759846687317,
+          "n": 8192,
+          "unit": "TFLOPS"
+        },
+        "fp8": {
+          "best": 1437.9468320773738,
+          "best_ms": 0.7646399736404419,
+          "median": 1431.4171815441193,
+          "median_ms": 0.7681280076503754,
+          "n": 8192,
+          "unit": "TFLOPS"
+        },
+        "int8": {
+          "best": 893.1335237266632,
+          "best_ms": 1.231071949005127,
+          "median": 873.5045436271806,
+          "median_ms": 1.25873601436615,
+          "n": 8192,
+          "unit": "TFLOPS"
+        }
+      },
+      "torch_info": {
+        "compute_capability": "9.0",
+        "cuda_version": "13.0",
+        "sm_count": 132,
+        "torch_name": "NVIDIA H100 80GB HBM3",
+        "torch_version": "2.13.0+cu130",
+        "total_memory_bytes": 85009367040
+      }
+    }
+  },
+  "started_at": "2026-10-19T08:29:51+00:00",
+  "status": "ok",
+  "suite": "micro",
+  "wall_s": 15.64029905
+}

@@ -1,0 +1,71 @@
+{
+  "cost_usd_upper_bound": 0.004342633137948603,
+  "finished_at": "2026-10-19T08:10:42+00:00",
+  "git_sha": "a36437cdb2a1bc7efb90a7394875cf39d8d7626f",
+  "github_run_url": "https://github.com/asmisawant/inference-capacity-planner/actions/runs/39220506641",
+  "gpu": "L4",
+  "gpu_call_s": 14.098602159999999,
+  "id": "003-l4-micro",
+  "modal_gpu": "L4",
+  "price_per_hour": 0.7992,
+  "quant": "bf16",
+  "reached_modal": true,
+  "result": {
+    "gpu_info": {
+      "clocks.max.memory": "6251",
+      "clocks.max.sm": "2040",
+      "driver_version": "610.57.04",
+      "memory.total": "23034",
+      "name": "NVIDIA L4",
+      "power.limit": "72.00"
+    },
+    "micro": {
+      "bandwidth": {
+        "best": 231.62713743738445,
+        "best_ms": 9.271295547485352,
+        "bytes_per_iter": 2147483648,
+        "median": 230.6083166559526,
+        "median_ms": 9.312255859375,
+        "unit": "GB/s"
+      },
+      "matmul": {
+        "bf16": {
+          "best": 55.021358359694815,
+          "best_ms": 19.983360290527344,
+          "median": 53.40670443870257,
+          "median_ms": 20.587520599365234,
+          "n": 8192,
+          "unit": "TFLOPS"
+        },
+        "fp8": {
+          "best": 94.7112842177541,
+          "best_ms": 11.609087944030762,
+          "median": 92.90432983450556,
+          "median_ms": 11.834880352020264,
+          "n": 8192,
+          "unit": "TFLOPS"
+        },
+        "int8": {
+          "best": 124.67972319939861,
+          "best_ms": 8.81868839263916,
+          "median": 118.53417878462292,
+          "median_ms": 9.275903701782227,
+          "n": 8192,
+          "unit": "TFLOPS"
+        }
+      },
+      "torch_info": {
+        "compute_capability": "8.9",
+        "cuda_version": "13.0",
+        "sm_count": 58,
+        "torch_name": "NVIDIA L4",
+        "torch_version": "2.13.0+cu130",
+        "total_memory_bytes": 23689363456
+      }
+    }
+  },
+  "started_at": "2026-10-19T08:10:24+00:00",
+  "status": "ok",
+  "suite": "micro",
+  "wall_s": 17.783100483000013
+}

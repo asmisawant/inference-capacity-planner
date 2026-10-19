@@ -31,6 +31,7 @@ def test_datasheet_values():
     assert h100.fp8_tflops == pytest.approx(3958 / 2, rel=1e-3)
     assert get_gpu("L4").bf16_tflops == pytest.approx(242 / 2, rel=1e-3)
     assert get_gpu("A100-80GB").mem_bw_gbs == 2039
+    assert get_gpu("A10G").bf16_tflops == pytest.approx(250 / 2)  # A10 datasheet
 
 
 def test_prices_derived_from_modal_per_second_rates():

@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from . import roofline as rf
+from . import validation
 from .gpus import GPUS
 from .models import load_model
 
@@ -83,7 +84,16 @@ def roofline_table() -> str:
     return "\n".join(rows)
 
 
-SECTIONS = {"gpu_table": gpu_table, "model_table": model_table, "roofline_table": roofline_table}
+SECTIONS = {
+    "gpu_table": gpu_table,
+    "model_table": model_table,
+    "roofline_table": roofline_table,
+    "measured_gpu": lambda: validation.gpu_measured_table(validation.load_results()),
+    "measured_vllm_memory": lambda: validation.vllm_memory_table(validation.load_results()),
+    "measured_ttft": lambda: validation.ttft_table(validation.load_results()),
+    "measured_decode": lambda: validation.decode_table(validation.load_results()),
+    "bench_spend": validation.spend_summary,
+}
 
 
 def render_readme(text: str) -> str:

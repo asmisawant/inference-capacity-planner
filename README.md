@@ -94,7 +94,7 @@ GPU runs are launched by GitHub Actions (`.github/workflows/bench.yml`) on [Moda
 - **Results:** each run is committed as `results/<id>.json` together with the tables below, which the workflow regenerates.
 
 Spend so far: <!-- BEGIN GENERATED: bench_spend -->
-31 runs (18 succeeded), at most **$2.05** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
+32 runs (19 succeeded), at most **$2.16** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
 <!-- END GENERATED: bench_spend -->
 
 Configurations that did not run: **FP8 on A100-80GB** fails at vLLM 0.30.0 engine startup twice, in two different places: in torch.compile (run 016, `InductorError: auto_functionalized was not removed`) and, with the eager compile backend, in the CUTLASS FP8 GEMM (run 022, `cutlass_scaled_mm_sm80_epilogue`). The A100 has no FP8 tensor cores, so this is vLLM's weight-only FP8 path. Not retried.
@@ -378,7 +378,9 @@ Not feasible: A10G bf16 (misses SLO: TTFT 446 ms at batch 1, TPOT 34.2 ms at bat
 Each `serve` run starts `vllm serve` with the recommended `max_num_seqs` and drives one replica with `vllm bench serve`: Poisson arrivals at the per-replica rate, random prompts of fixed length, `--ignore-eos`, and a 2-minute measured window after a warm-up. Predictions come from the current calibration.
 
 <!-- BEGIN GENERATED: serve_validation -->
-_No benchmark results yet._
+| GPU | Quant | Load (prompt/output tokens, req/s) | max_num_seqs | TTFT ms predicted / measured p50 (p90) | TPOT ms predicted / measured p50 (p90) | Throughput req/s (achieved / offered) | Run |
+|---|---|---|---:|---|---|---|---|
+| L4 | fp8 | 1024/256, 1 | 15 | 228 / 342 (4003) | 46.6 / 48.1 (49.3) | 0.93 / 1 | [023-l4-serve-fp8-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39226920677) |
 <!-- END GENERATED: serve_validation -->
 
 ## Development

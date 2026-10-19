@@ -4,7 +4,7 @@ Open-source GPU serving capacity planner: roofline predictions validated against
 
 Given a model, latency targets (TTFT / TPOT) and traffic, the planner will recommend a GPU, a serving config (engine, quantization, batch size, KV-cache size) and a cost per million tokens. A roofline model built from GPU specs predicts performance; benchmarks on Modal validate and calibrate it.
 
-**Status: step 2 of the plan (benchmarks done)** — GPU spec table and roofline formulas (step 1), plus benchmarks on Modal that measure how far real hardware and vLLM fall short of the roofline (step 2). Roofline numbers are *ideal bounds*; measured numbers are labelled and link to the GitHub Actions run that produced them.
+**Status: step 3 of the plan** — GPU spec table and roofline formulas (step 1), benchmarks on Modal that measure how far real hardware and vLLM fall short of the roofline (step 2), and a calibrated recommender validated under real load (step 3). Roofline numbers are *ideal bounds*; measured numbers are labelled and link to the GitHub Actions run that produced them.
 
 ## Rule for numbers in this README
 
@@ -297,6 +297,90 @@ Each batch of 512-token prompts runs twice, with 64 and with 192 output tokens. 
 | H100 | fp8 | 256 | 9.74 | 5.41 | 1.80 | 26,296 | 0.042 | 14.41 |
 <!-- END GENERATED: measured_decode -->
 
+## Calibration and recommender (step 3)
+
+### How much of vLLM the roofline explains
+
+First, GPU efficiency from the microbenchmarks replaces datasheet peaks (`src/capacity_planner/calibration.py`):
+
+<!-- BEGIN GENERATED: calibration_efficiency -->
+| GPU | Compute efficiency (BF16 GEMM / datasheet) | Memory efficiency (GEMV / datasheet) |
+|---|---:|---:|
+| L4 | 0.44 | 0.86 |
+| A10G | 0.62 | 0.83 |
+| A100-40GB | 0.84 | 0.91 |
+| A100-80GB | 0.82 | 0.86 |
+| H100 | 0.80 | 0.85 |
+<!-- END GENERATED: calibration_efficiency -->
+
+With those efficiencies, the remaining gap to vLLM is fitted per configuration as TTFT = c0 + c1 × roofline TTFT and decode step = a × roofline step + b × batch. c1 and a near 1 with small c0 and b mean the efficiency-corrected roofline already explains vLLM. Large values flag where the kernels fall short of the hardware, e.g. AWQ int4 decode on H100 (a ≈ 2). The max error is the worst fitted point.
+
+<!-- BEGIN GENERATED: calibration_fits -->
+| GPU | Quant | TTFT c0 (ms) | TTFT c1 | TTFT max error | Decode a | Decode b (µs/seq) | Decode max error | Run |
+|---|---|---:|---:|---:|---:|---:|---:|---|
+| L4 | awq-int4 | 0.2 | 1.13 | 12% | 0.78 | 268 | 10% | 018-l4-vllm-awq-int4 |
+| L4 | bf16 | 12.2 | 0.97 | 6% | 0.97 | 156 | 2% | 006-l4-vllm-bf16 |
+| L4 | fp8 | -0.5 | 1.50 | 13% | 1.00 | 101 | 2% | 015-l4-vllm-fp8 |
+| A10G | awq-int4 | 4.7 | 1.26 | 2% | 0.83 | 197 | 19% | 019-a10g-vllm-awq-int4 |
+| A10G | bf16 | -11.7 | 1.29 | 32% | 1.06 | 28 | 3% | 011-a10g-vllm-bf16 |
+| A100-40GB | bf16 | 6.8 | 1.17 | 4% | 1.13 | 25 | 8% | 012-a100-40gb-vllm-bf16 |
+| A100-80GB | awq-int4 | 5.3 | 1.62 | 1% | 1.46 | 50 | 13% | 020-a100-80gb-vllm-awq-int4 |
+| A100-80GB | bf16 | 4.8 | 1.17 | 2% | 1.13 | 36 | 5% | 013-a100-80gb-vllm-bf16 |
+| H100 | awq-int4 | 3.2 | 1.31 | 21% | 2.12 | 1 | 5% | 021-h100-vllm-awq-int4 |
+| H100 | bf16 | 2.3 | 1.27 | 4% | 1.15 | 6 | 2% | 014-h100-vllm-bf16 |
+| H100 | fp8 | 2.2 | 1.78 | 11% | 1.38 | 4 | 3% | 017-h100-vllm-fp8 |
+<!-- END GENERATED: calibration_fits -->
+
+### Recommender
+
+`python -m capacity_planner.recommend --prompt 1024 --output 256 --rps 5 --ttft-ms 500 --tpot-ms 50`
+
+Only (GPU, quant) pairs that vLLM ran are considered. For each, the recommender uses the measured curves: idle TTFT over prompt length, and the decode step over batch size. The calibrated roofline supplies only the shape outside them: prompt lengths outside 128–4,000 tokens, and contexts other than the measured 640 tokens. Per replica with B requests in flight:
+
+- TPOT = decode step(B) + B × prefill / output tokens. Every request's prefill is charged as extra time that doesn't overlap with decode, which is conservative.
+- TTFT under load = prefill + one decode step. Queueing beyond that is not modelled.
+- Capacity = B / (output tokens × TPOT) requests/s.
+
+The largest B within the KV cache and both latency targets sets each replica's capacity. Replicas = ⌈traffic / capacity⌉, and the cheapest $/hr wins. Ties go to less quantization, then lower TPOT. "Batch per replica" is the expected number in flight at this traffic; the number in parentheses is the `max_num_seqs` to configure.
+
+<!-- BEGIN GENERATED: recommend_examples -->
+**Chat assistant:** 1024-token prompts, 256-token outputs, 5 requests/s, TTFT ≤ 500 ms, TPOT ≤ 50 ms.
+
+| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Batch per replica (max_num_seqs) | TTFT ms | TPOT ms | KV cache tokens | Run |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| A100-40GB | bf16 | 1 | 2.10 | 0.091 | 0.455 | 28 (110) | 82 | 21.7 | 360,528 | 012-a100-40gb-vllm-bf16 |
+| A10G | awq-int4 | 2 | 2.20 | 0.095 | 0.477 | 22 (35) | 243 | 34.3 | 246,480 | 019-a10g-vllm-awq-int4 |
+| L4 | awq-int4 | 3 | 2.40 | 0.104 | 0.520 | 21 (21) | 313 | 49.1 | 246,528 | 018-l4-vllm-awq-int4 |
+
+Not feasible: L4 bf16 (misses SLO: TPOT 57.6 ms at batch 1).
+
+**Long-context interactive:** 2048-token prompts, 256-token outputs, 20 requests/s, TTFT ≤ 300 ms, TPOT ≤ 30 ms.
+
+| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Batch per replica (max_num_seqs) | TTFT ms | TPOT ms | KV cache tokens | Run |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| H100 | bf16 | 2 | 7.90 | 0.048 | 0.429 | 41 (98) | 56 | 15.9 | 1,035,104 | 014-h100-vllm-bf16 |
+| H100 | fp8 | 2 | 7.90 | 0.048 | 0.429 | 22 (131) | 39 | 8.5 | 1,149,168 | 017-h100-vllm-fp8 |
+| H100 | awq-int4 | 2 | 7.90 | 0.048 | 0.429 | 36 (93) | 55 | 14.0 | 1,203,072 | 021-h100-vllm-awq-int4 |
+
+Not feasible: A10G bf16 (misses SLO: TTFT 446 ms at batch 1, TPOT 34.2 ms at batch 1); L4 bf16 (misses SLO: TTFT 563 ms at batch 1, TPOT 58.8 ms at batch 1); L4 fp8 (misses SLO: TTFT 438 ms at batch 1, TPOT 36.4 ms at batch 1); A10G awq-int4 (misses SLO: TTFT 465 ms at batch 1); L4 awq-int4 (misses SLO: TTFT 595 ms at batch 1).
+
+**Offline batch generation:** 512-token prompts, 512-token outputs, 50 requests/s, TTFT ≤ 5000 ms, TPOT ≤ 200 ms.
+
+| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Batch per replica (max_num_seqs) | TTFT ms | TPOT ms | KV cache tokens | Run |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| H100 | bf16 | 2 | 7.90 | 0.043 | 0.086 | 220 (256) | 25 | 17.2 | 1,035,104 | 014-h100-vllm-bf16 |
+| H100 | fp8 | 2 | 7.90 | 0.043 | 0.086 | 123 (256) | 17 | 9.6 | 1,149,168 | 017-h100-vllm-fp8 |
+| A100-40GB | bf16 | 5 | 10.49 | 0.057 | 0.114 | 197 (256) | 61 | 38.5 | 360,528 | 012-a100-40gb-vllm-bf16 |
+<!-- END GENERATED: recommend_examples -->
+
+### Validation under real load
+
+Each `serve` run starts `vllm serve` with the recommended `max_num_seqs` and drives one replica with `vllm bench serve`: Poisson arrivals at the per-replica rate, random prompts of fixed length, `--ignore-eos`, and a 2-minute measured window after a warm-up. Predictions come from the current calibration.
+
+<!-- BEGIN GENERATED: serve_validation -->
+_No benchmark results yet._
+<!-- END GENERATED: serve_validation -->
+
 ## Development
 
 ```bash
@@ -310,4 +394,4 @@ python -m capacity_planner.report --update-readme  # regenerate README tables
 
 1. **GPU specs + roofline formulas** (this step).
 2. **Benchmarks on Modal via GitHub Actions** (vLLM first, then SGLang; Qwen2.5-7B-Instruct; budget < $40) to measure memory overhead and achieved FLOPs/bandwidth (done; see the tables above).
-3. Calibrate the roofline and build the recommender: model + SLOs + traffic → GPU, engine, quantization, batch size, KV-cache size, $/1M tokens.
+3. **Calibrate the roofline and build the recommender**: model + SLOs + traffic → GPU, engine, quantization, batch size, KV-cache size, $/1M tokens; validated with `vllm serve` under load (in progress).

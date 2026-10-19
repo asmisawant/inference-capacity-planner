@@ -39,9 +39,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--suite", required=True)
     ap.add_argument("--quant", default="bf16")
     ap.add_argument("--timeout-min", type=int, required=True)
+    ap.add_argument("--serve", default="null", help="JSON serve parameters (serve suite)")
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args(argv)
-    run = Run(id=args.id, gpu=args.gpu, suite=args.suite, quant=args.quant)
+    run = Run(id=args.id, gpu=args.gpu, suite=args.suite, quant=args.quant, serve=json.loads(args.serve))
 
     import modal
 
@@ -54,6 +55,7 @@ def main(argv: list[str] | None = None) -> int:
         "gpu": run.gpu,
         "suite": run.suite,
         "quant": run.quant,
+        "serve": run.serve,
         "modal_gpu": GPUS[run.gpu].modal_gpu,
         "price_per_hour": GPUS[run.gpu].price_per_hour,
         "git_sha": subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip(),
@@ -76,12 +78,12 @@ def main(argv: list[str] | None = None) -> int:
             with modal.enable_output(), app.run():
                 record["reached_modal"] = True
                 revision = None
-                if run.suite == "vllm":
+                if run.suite in ("vllm", "serve"):
                     revision = download.remote(MODELS[run.quant][0])
                     record["model_revision"] = revision
                 gpu_t0 = time.monotonic()
                 bench = Bench.with_options(gpu=GPUS[run.gpu].modal_gpu, timeout=run.timeout_min * 60)()
-                record["result"] = bench.run.remote(run.suite, run.quant, revision)
+                record["result"] = bench.run.remote(run.suite, run.quant, revision, run.serve)
                 record["gpu_call_s"] = time.monotonic() - gpu_t0
             if "remote_error" in record["result"]:
                 print(record["result"]["traceback"])

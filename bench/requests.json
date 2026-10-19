@@ -125,6 +125,18 @@
       "gpu": "A100-80GB",
       "suite": "vllm",
       "quant": "fp8"
+    },
+    {
+      "id": "023-l4-serve-fp8-chat",
+      "gpu": "L4",
+      "suite": "serve",
+      "quant": "fp8",
+      "serve": {
+        "prompt": 1024,
+        "output": 256,
+        "rps": 1.0,
+        "max_num_seqs": 15
+      }
     }
   ]
 }

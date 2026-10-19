@@ -50,7 +50,7 @@ def download(repo_id: str) -> str:
 @app.cls(image=image, gpu="L4", volumes={HF_CACHE: hf_volume}, timeout=30 * 60)
 class Bench:
     @modal.method()
-    def run(self, suite: str, quant: str, revision: str | None = None) -> dict:
+    def run(self, suite: str, quant: str, revision: str | None = None, serve: dict | None = None) -> dict:
         """Returns plain JSON types only: the caller (a GitHub runner) has no torch/vllm
         installed, so anything else (e.g. torch's TorchVersion str subclass) can't be
         unpickled there. Errors come back as text for the same reason."""
@@ -64,6 +64,8 @@ class Bench:
                 out = {"gpu_info": info, "micro": micro.run()}
             elif suite == "vllm":
                 out = {"gpu_info": info, "vllm": self._vllm(quant, revision)}
+            elif suite == "serve":
+                out = {"gpu_info": info, "serve": self._serve(quant, revision, serve)}
             else:
                 raise ValueError(suite)
             return json.loads(json.dumps(out, default=str))
@@ -94,14 +96,30 @@ class Bench:
         result["log_summary"] = parse_vllm_log(log)
         return result
 
+    def _serve(self, quant: str, revision: str | None, serve: dict) -> dict:
+        from bench.parse import parse_vllm_log
+
+        extra = [
+            "--max-num-seqs", str(serve["max_num_seqs"]), "--prompt", str(serve["prompt"]),
+            "--output", str(serve["output"]), "--rps", str(serve["rps"]),
+        ]
+        rc, log, result = self._run_child("bench.serve_bench", quant, revision, extra)
+        if rc != 0:
+            tail = "".join(log.splitlines(keepends=True)[-40:])
+            raise RuntimeError(f"serve_bench exited {rc}; last log lines:\n{tail}")
+        result["log_summary"] = parse_vllm_log(log)
+        return result
+
     def _vllm_once(self, quant: str, revision: str | None, compile_backend: str | None):
+        extra = ["--compile-backend", compile_backend] if compile_backend else []
+        return self._run_child("bench.vllm_bench", quant, revision, extra)
+
+    def _run_child(self, module: str, quant: str, revision: str | None, extra: list[str]):
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "out.json")
-            cmd = [sys.executable, "-m", "bench.vllm_bench", "--quant", quant, "--out", out]
+            cmd = [sys.executable, "-m", module, "--quant", quant, "--out", out, *extra]
             if revision:
                 cmd += ["--revision", revision]
-            if compile_backend:
-                cmd += ["--compile-backend", compile_backend]
             env = {**os.environ, "HF_HUB_OFFLINE": "1"}
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd="/root"

@@ -26,10 +26,10 @@ REQUESTS = ROOT / "bench" / "requests.json"
 RESULTS = ROOT / "results"
 LEDGER = RESULTS / "ledger.jsonl"
 
-SUITES = ("micro", "vllm")
+SUITES = ("micro", "vllm", "serve")
 QUANTS = ("bf16", "fp8", "awq-int4")
 # Modal container timeout per suite. Also the worst-case billable time we budget for.
-TIMEOUT_MIN = {"micro": 15, "vllm": 30}
+TIMEOUT_MIN = {"micro": 15, "vllm": 30, "serve": 30}
 # Modal also bills CPU and RAM alongside the GPU; budget a margin for it.
 NON_GPU_MARGIN = 1.10
 
@@ -40,6 +40,8 @@ class Run:
     gpu: str
     suite: str
     quant: str = "bf16"
+    # serve suite only: {"prompt", "output", "rps", "max_num_seqs"} for one replica
+    serve: dict | None = None
 
     def __post_init__(self):
         if self.gpu not in GPUS:
@@ -50,6 +52,12 @@ class Run:
             raise ValueError(f"run {self.id}: unknown quant {self.quant!r}")
         if not self.id or "/" in self.id or " " in self.id:
             raise ValueError(f"bad run id {self.id!r}")
+        if (self.suite == "serve") != (self.serve is not None):
+            raise ValueError(f"run {self.id}: 'serve' parameters go with (and only with) the serve suite")
+        if self.serve is not None:
+            need = {"prompt", "output", "rps", "max_num_seqs"}
+            if set(self.serve) != need or min(self.serve.values()) <= 0:
+                raise ValueError(f"run {self.id}: serve needs positive {sorted(need)}")
 
     @property
     def timeout_min(self) -> int:
@@ -115,6 +123,7 @@ def collect(out_dir: Path, results_dir: Path = RESULTS) -> list[dict]:
                 "gpu": rec["gpu"],
                 "suite": rec["suite"],
                 "quant": rec["quant"],
+                "serve": rec.get("serve"),
                 "status": rec["status"],
                 "reached_modal": rec.get("reached_modal", True),
                 "wall_s": rec["wall_s"],
@@ -146,7 +155,8 @@ def main(argv: list[str] | None = None) -> int:
         budget, runs = load_requests()
         pending = plan(budget, runs, ledger)
         matrix = [
-            {"id": r.id, "gpu": r.gpu, "suite": r.suite, "quant": r.quant, "timeout_min": r.timeout_min}
+            {"id": r.id, "gpu": r.gpu, "suite": r.suite, "quant": r.quant, "timeout_min": r.timeout_min,
+             "serve": r.serve}
             for r in pending
         ]
         worst = sum(r.worst_case_usd for r in pending)

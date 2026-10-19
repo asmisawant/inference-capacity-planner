@@ -160,3 +160,33 @@ def spend_summary(results_dir: Path = RESULTS_DIR) -> str:
         f"{len(entries)} runs ({ok} succeeded), at most **${total:.2f}** of GPU time "
         "(runner wall-clock × Modal GPU price × 1.1 for CPU/RAM)."
     )
+
+
+def serve_table(results: list[dict]) -> str:
+    """Online serving runs vs the recommender's prediction for the same load."""
+    from .calibration import measured_configs
+    from .recommend import Workload, predict
+
+    runs = [r for r in results if r["suite"] == "serve"]
+    if not runs:
+        return NO_RESULTS
+    configs = {c.key: c for c in measured_configs(results)}
+    rows = [
+        "| GPU | Quant | Load (prompt/output tokens, req/s) | max_num_seqs | TTFT ms predicted / measured p50 (p90) | TPOT ms predicted / measured p50 (p90) | Throughput req/s (achieved / offered) | Run |",
+        "|---|---|---|---:|---|---|---|---|",
+    ]
+    for r in runs:
+        s = r["serve"]
+        res = r["result"]["serve"]["result"]
+        w = Workload(s["prompt"], s["output"], s["rps"], ttft_slo_s=1e9, tpot_slo_s=1e9)
+        c = configs.get((r["gpu"], r["quant"]))
+        p = predict(c, w, s["max_num_seqs"]) if c else None
+        pt = f"{p.ttft_s * 1e3:.0f}" if p else "overloaded"
+        pp = f"{p.tpot_s * 1e3:.1f}" if p else "overloaded"
+        rows.append(
+            f"| {r['gpu']} | {r['quant']} | {s['prompt']}/{s['output']}, {s['rps']:g} | {s['max_num_seqs']} "
+            f"| {pt} / {res['median_ttft_ms']:.0f} ({res['p90_ttft_ms']:.0f}) "
+            f"| {pp} / {res['median_tpot_ms']:.1f} ({res['p90_tpot_ms']:.1f}) "
+            f"| {res['request_throughput']:.2f} / {s['rps']:g} | [{r['id']}]({r['github_run_url']}) |"
+        )
+    return "\n".join(rows)

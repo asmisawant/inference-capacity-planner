@@ -101,7 +101,8 @@ def collect(out_dir: Path, results_dir: Path = RESULTS) -> list[dict]:
     """Move launcher outputs into results/<id>.json and append one ledger line each."""
     entries = []
     results_dir.mkdir(parents=True, exist_ok=True)
-    known = {e["id"] for e in load_ledger(results_dir / "ledger.jsonl")}
+    # Same rule as plan(): an id is final once it reached Modal; sign-in failures may be retried.
+    known = {e["id"] for e in load_ledger(results_dir / "ledger.jsonl") if e.get("reached_modal", True)}
     for f in sorted(out_dir.glob("*.json")):
         rec = json.loads(f.read_text())
         if rec["id"] in known:

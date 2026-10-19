@@ -96,3 +96,21 @@ def test_runs_that_never_reached_modal_can_retry_but_still_count_as_spend():
     ]
     assert [r.id for r in runs.plan(40, [_run("a"), _run("b")], ledger)] == ["a"]
     assert runs.spent_usd(ledger) == pytest.approx(0.2001)
+
+
+def test_collect_records_a_retry_of_a_run_that_never_reached_modal(tmp_path):
+    out, res = tmp_path / "out", tmp_path / "results"
+    out.mkdir()
+    base = {
+        "id": "r1", "gpu": "L4", "suite": "micro", "quant": "bf16", "wall_s": 1.0,
+        "cost_usd_upper_bound": 0.0001, "finished_at": "2026-10-19T00:00:00+00:00",
+    }
+    (out / "r1.json").write_text(json.dumps({**base, "status": "error", "reached_modal": False}))
+    runs.collect(out, res)
+    (out / "r1.json").write_text(json.dumps({**base, "status": "ok", "reached_modal": True}))
+    assert [e["status"] for e in runs.collect(out, res)] == ["ok"]
+    assert json.loads((res / "r1.json").read_text())["status"] == "ok"
+    ledger = runs.load_ledger(res / "ledger.jsonl")
+    assert [(e["status"], e["reached_modal"]) for e in ledger] == [("error", False), ("ok", True)]
+    # Now final: a further collect of the same id is ignored.
+    assert runs.collect(out, res) == []

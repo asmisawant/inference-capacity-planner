@@ -28,7 +28,7 @@ def test_quantization_only_shrinks_decoder_linears(m):
 def test_effective_compute_dtype_falls_back_without_fp8(m):
     assert rf.effective_compute_dtype(get_gpu("H100"), FP8) == "fp8"
     assert rf.effective_compute_dtype(get_gpu("A100-80GB"), FP8) == "bf16"
-    assert rf.effective_compute_dtype(get_gpu("A10G"), rf.QUANTIZATIONS["int8"]) == "bf16"
+    assert rf.effective_compute_dtype(get_gpu("A10G"), rf.QUANTIZATIONS["int8"]) == "int8"  # A10 has INT8 tensor cores
 
 
 def test_kv_capacity_hand_calculation(m):

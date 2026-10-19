@@ -4,7 +4,7 @@ Open-source GPU serving capacity planner: roofline predictions validated against
 
 Given a model, latency targets (TTFT / TPOT) and traffic, the planner will recommend a GPU, a serving config (engine, quantization, batch size, KV-cache size) and a cost per million tokens. A roofline model built from GPU specs predicts performance; benchmarks on Modal validate and calibrate it.
 
-**Status: step 2 of the plan** — GPU spec table and roofline formulas (step 1), plus benchmarks on Modal that measure how far real hardware and vLLM fall short of the roofline (step 2). Roofline numbers are *ideal bounds*; measured numbers are labelled and link to the GitHub Actions run that produced them.
+**Status: step 2 of the plan (benchmarks done)** — GPU spec table and roofline formulas (step 1), plus benchmarks on Modal that measure how far real hardware and vLLM fall short of the roofline (step 2). Roofline numbers are *ideal bounds*; measured numbers are labelled and link to the GitHub Actions run that produced them.
 
 ## Rule for numbers in this README
 
@@ -18,7 +18,7 @@ Source of each value: `src/capacity_planner/gpus.py`. TFLOPS are dense (no 2:4 s
 | GPU | Memory (GiB) | Bandwidth (GB/s) | BF16 dense TFLOPS | FP8 dense TFLOPS | Ridge point (FLOP/byte, BF16) | Modal $/hr |
 |---|---:|---:|---:|---:|---:|---:|
 | L4 | 24 | 300 | 121 | 242.5 | 403 | 0.80 |
-| A10G | 24 | 600 | 70 | – | 117 | 1.10 |
+| A10G | 24 | 600 | 125 | – | 208 | 1.10 |
 | A100-40GB | 40 | 1555 | 312 | – | 201 | 2.10 |
 | A100-80GB | 80 | 2039 | 312 | – | 153 | 2.50 |
 | H100 | 80 | 3350 | 989.4 | 1978.9 | 295 | 3.95 |
@@ -26,7 +26,7 @@ Source of each value: `src/capacity_planner/gpus.py`. TFLOPS are dense (no 2:4 s
 
 Caveats on the inputs:
 - **Prices** are Modal's per-second on-demand rates as quoted from modal.com/pricing in web search results (2026-10-19). modal.com is blocked from the dev sandbox, so they have not been checked against the page directly.
-- **A10G**: NVIDIA publishes no A10G datasheet. 70 BF16 TFLOPS is a third-party figure; step 2 should measure it.
+- **A10G**: Modal's `A10G` runs on an NVIDIA **A10** (nvidia-smi in runs 007, 011, 019), so this row uses NVIDIA's A10 datasheet. An earlier third-party A10G figure (70 BF16 TFLOPS) was below what run 007 measured.
 - **A100 / H100** are assumed to be the SXM parts on Modal.
 
 ## Model: Qwen2.5-7B-Instruct
@@ -70,9 +70,9 @@ Workload: 1024-token prompt, 256 output tokens; each sequence holds 1280 tokens 
 | L4 | bf16 | bf16 | 147,826 | 115 | 112.2 | 51.02 | 1,457 | 0.152 |
 | L4 | fp8 | fp8 | 261,618 | 204 | 56.9 | 29.26 | 2,583 | 0.086 |
 | L4 | awq-int4 | bf16 | 316,292 | 247 | 112.2 | 18.81 | 3,125 | 0.071 |
-| A10G | bf16 | bf16 | 147,826 | 115 | 193.9 | 25.51 | 2,914 | 0.105 |
-| A10G | fp8 | bf16 | 261,618 | 204 | 193.9 | 14.63 | 4,777 | 0.064 |
-| A10G | awq-int4 | bf16 | 316,292 | 247 | 193.9 | 9.41 | 4,777 | 0.064 |
+| A10G | bf16 | bf16 | 147,826 | 115 | 108.6 | 25.51 | 2,914 | 0.105 |
+| A10G | fp8 | bf16 | 261,618 | 204 | 108.6 | 14.63 | 5,166 | 0.059 |
+| A10G | awq-int4 | bf16 | 316,292 | 247 | 108.6 | 9.41 | 6,249 | 0.049 |
 | A100-40GB | bf16 | bf16 | 423,452 | 330 | 43.5 | 9.84 | 13,000 | 0.045 |
 | A100-40GB | fp8 | bf16 | 537,244 | 419 | 43.5 | 5.65 | 16,501 | 0.035 |
 | A100-40GB | awq-int4 | bf16 | 591,918 | 462 | 43.5 | 3.63 | 18,184 | 0.032 |
@@ -97,13 +97,15 @@ Spend so far: <!-- BEGIN GENERATED: bench_spend -->
 31 runs (18 succeeded), at most **$2.05** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
 <!-- END GENERATED: bench_spend -->
 
+Configurations that did not run: **FP8 on A100-80GB** fails at vLLM 0.30.0 engine startup twice, in two different places: in torch.compile (run 016, `InductorError: auto_functionalized was not removed`) and, with the eager compile backend, in the CUTLASS FP8 GEMM (run 022, `cutlass_scaled_mm_sm80_epilogue`). The A100 has no FP8 tensor cores, so this is vLLM's weight-only FP8 path. Not retried.
+
 ### Measured GPU throughput vs datasheet
 
 <!-- BEGIN GENERATED: measured_gpu -->
 | GPU | Device (nvidia-smi) | Memory GiB (measured / spec) | GEMV read GB/s (% of datasheet) | Copy GB/s (%) | BF16 GEMM TFLOPS (%) | FP8 GEMM TFLOPS (%) | INT8 GEMM TOPS (%) | Run |
 |---|---|---:|---:|---:|---:|---:|---:|---|
 | L4 | NVIDIA L4 | 22.1 / 24 | 259 (86%) | 230 (77%) | 53 (44%) | 92 (38%) | 128 (53%) | [005-l4-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39222305725) |
-| A10G | NVIDIA A10 | 22.1 / 24 | 498 (83%) | 484 (81%) | 77 (111%) | unsupported | 147 (–) | [007-a10g-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
+| A10G | NVIDIA A10 | 22.1 / 24 | 498 (83%) | 484 (81%) | 77 (62%) | unsupported | 147 (59%) | [007-a10g-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
 | A100-40GB | NVIDIA A100-SXM4-40GB | 39.5 / 40 | 1,416 (91%) | 1,381 (89%) | 262 (84%) | unsupported | 408 (65%) | [008-a100-40gb-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
 | A100-80GB | NVIDIA A100-SXM4-80GB | 79.3 / 80 | 1,745 (86%) | 1,752 (86%) | 254 (82%) | unsupported | 408 (65%) | [009-a100-80gb-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223773836) |
 | H100 | NVIDIA H100 80GB HBM3 | 79.2 / 80 | 2,863 (85%) | 2,998 (89%) | 791 (80%) | 1431 (72%) | 874 (44%) | [010-h100-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
@@ -149,16 +151,16 @@ The roofline KV capacity assumes zero overhead. "Non-KV overhead" = GPU memory �
 | L4 | fp8 | 1024 | 190.1 | 56.9 | 3.34 |
 | L4 | fp8 | 2048 | 403.5 | 117.2 | 3.44 |
 | L4 | fp8 | 4000 | 836.0 | 241.8 | 3.46 |
-| A10G | awq-int4 | 128 | 32.1 | 23.9 | 1.34 |
-| A10G | awq-int4 | 512 | 112.5 | 96.2 | 1.17 |
-| A10G | awq-int4 | 1024 | 227.8 | 193.9 | 1.17 |
-| A10G | awq-int4 | 2048 | 453.7 | 393.9 | 1.15 |
-| A10G | awq-int4 | 4000 | 906.7 | 791.6 | 1.15 |
+| A10G | awq-int4 | 128 | 32.1 | 13.4 | 2.40 |
+| A10G | awq-int4 | 512 | 112.5 | 53.9 | 2.09 |
+| A10G | awq-int4 | 1024 | 227.8 | 108.6 | 2.10 |
+| A10G | awq-int4 | 2048 | 453.7 | 220.6 | 2.06 |
+| A10G | awq-int4 | 4000 | 906.7 | 443.3 | 2.05 |
 | A10G | bf16 | 128 | 40.7 | 25.4 | 1.60 |
-| A10G | bf16 | 512 | 108.9 | 96.2 | 1.13 |
-| A10G | bf16 | 1024 | 211.2 | 193.9 | 1.09 |
-| A10G | bf16 | 2048 | 413.7 | 393.9 | 1.05 |
-| A10G | bf16 | 4000 | 928.4 | 791.6 | 1.17 |
+| A10G | bf16 | 512 | 108.9 | 53.9 | 2.02 |
+| A10G | bf16 | 1024 | 211.2 | 108.6 | 1.94 |
+| A10G | bf16 | 2048 | 413.7 | 220.6 | 1.88 |
+| A10G | bf16 | 4000 | 928.4 | 443.3 | 2.09 |
 | A100-40GB | bf16 | 128 | 20.1 | 9.8 | 2.05 |
 | A100-40GB | bf16 | 512 | 36.9 | 21.6 | 1.71 |
 | A100-40GB | bf16 | 1024 | 67.8 | 43.5 | 1.56 |
@@ -230,8 +232,8 @@ Each batch of 512-token prompts runs twice, with 64 and with 192 output tokens. 
 | A10G | awq-int4 | 16 | 12.49 | 10.26 | 1.22 | 1,281 | 0.239 | 12.49 |
 | A10G | awq-int4 | 32 | 14.80 | 11.24 | 1.32 | 2,162 | 0.141 | 22.97 |
 | A10G | awq-int4 | 64 | 24.70 | 13.21 | 1.87 | 2,591 | 0.118 | 37.61 |
-| A10G | awq-int4 | 128 | 45.93 | 26.33 | 1.74 | 2,787 | 0.110 | 77.27 |
-| A10G | awq-int4 | 256 | 90.14 | 52.65 | 1.71 | 2,840 | 0.108 | 165.59 |
+| A10G | awq-int4 | 128 | 45.93 | 17.13 | 2.68 | 2,787 | 0.110 | 77.27 |
+| A10G | awq-int4 | 256 | 90.14 | 29.49 | 3.06 | 2,840 | 0.108 | 165.59 |
 | A10G | bf16 | 1 | 32.38 | 25.45 | 1.27 | 31 | 9.893 | 32.39 |
 | A10G | bf16 | 2 | 32.56 | 25.51 | 1.28 | 61 | 4.974 | 32.80 |
 | A10G | bf16 | 4 | 32.84 | 25.63 | 1.28 | 122 | 2.509 | 32.86 |
@@ -307,5 +309,5 @@ python -m capacity_planner.report --update-readme  # regenerate README tables
 ## Plan
 
 1. **GPU specs + roofline formulas** (this step).
-2. **Benchmarks on Modal via GitHub Actions** (vLLM first, then SGLang; Qwen2.5-7B-Instruct; budget < $40) to measure memory overhead and achieved FLOPs/bandwidth (in progress).
+2. **Benchmarks on Modal via GitHub Actions** (vLLM first, then SGLang; Qwen2.5-7B-Instruct; budget < $40) to measure memory overhead and achieved FLOPs/bandwidth (done; see the tables above).
 3. Calibrate the roofline and build the recommender: model + SLOs + traffic → GPU, engine, quantization, batch size, KV-cache size, $/1M tokens.

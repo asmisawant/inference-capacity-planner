@@ -1,0 +1,35 @@
+name: fetch-configs
+
+# Fetch model config.json files from Hugging Face (unreachable from the dev sandbox)
+# and commit them, pinned to the revision read.
+on:
+  push:
+    paths: ["bench/models.json"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m bench.fetch_configs
+      - name: Commit configs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/capacity_planner/data
+          git diff --cached --quiet && exit 0
+          git commit -m "data: model configs from Hugging Face"
+          for i in 1 2 3 4; do
+            git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep $((2 ** i))
+          done
+          exit 1

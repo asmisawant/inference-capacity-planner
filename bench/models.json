@@ -1,0 +1,7 @@
+{
+  "models": [
+    {"name": "Qwen2.5-7B-Instruct", "repo": "Qwen/Qwen2.5-7B-Instruct", "file": "qwen2.5-7b-instruct.hf-config.json"},
+    {"name": "Granite-3.1-8B-Instruct", "repo": "ibm-granite/granite-3.1-8b-instruct", "file": "granite-3.1-8b-instruct.hf-config.json"},
+    {"name": "Qwen2.5-32B-Instruct", "repo": "Qwen/Qwen2.5-32B-Instruct", "file": "qwen2.5-32b-instruct.hf-config.json"}
+  ]
+}

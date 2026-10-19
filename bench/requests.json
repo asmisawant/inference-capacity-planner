@@ -33,6 +33,92 @@
       "gpu": "L4",
       "suite": "vllm",
       "quant": "bf16"
+    },
+    {
+      "id": "007-a10g-micro",
+      "gpu": "A10G",
+      "suite": "micro"
+    },
+    {
+      "id": "008-a100-40gb-micro",
+      "gpu": "A100-40GB",
+      "suite": "micro"
+    },
+    {
+      "id": "009-a100-80gb-micro",
+      "gpu": "A100-80GB",
+      "suite": "micro"
+    },
+    {
+      "id": "010-h100-micro",
+      "gpu": "H100",
+      "suite": "micro"
+    },
+    {
+      "id": "011-a10g-vllm-bf16",
+      "gpu": "A10G",
+      "suite": "vllm",
+      "quant": "bf16"
+    },
+    {
+      "id": "012-a100-40gb-vllm-bf16",
+      "gpu": "A100-40GB",
+      "suite": "vllm",
+      "quant": "bf16"
+    },
+    {
+      "id": "013-a100-80gb-vllm-bf16",
+      "gpu": "A100-80GB",
+      "suite": "vllm",
+      "quant": "bf16"
+    },
+    {
+      "id": "014-h100-vllm-bf16",
+      "gpu": "H100",
+      "suite": "vllm",
+      "quant": "bf16"
+    },
+    {
+      "id": "015-l4-vllm-fp8",
+      "gpu": "L4",
+      "suite": "vllm",
+      "quant": "fp8"
+    },
+    {
+      "id": "016-a100-80gb-vllm-fp8",
+      "gpu": "A100-80GB",
+      "suite": "vllm",
+      "quant": "fp8"
+    },
+    {
+      "id": "017-h100-vllm-fp8",
+      "gpu": "H100",
+      "suite": "vllm",
+      "quant": "fp8"
+    },
+    {
+      "id": "018-l4-vllm-awq-int4",
+      "gpu": "L4",
+      "suite": "vllm",
+      "quant": "awq-int4"
+    },
+    {
+      "id": "019-a10g-vllm-awq-int4",
+      "gpu": "A10G",
+      "suite": "vllm",
+      "quant": "awq-int4"
+    },
+    {
+      "id": "020-a100-80gb-vllm-awq-int4",
+      "gpu": "A100-80GB",
+      "suite": "vllm",
+      "quant": "awq-int4"
+    },
+    {
+      "id": "021-h100-vllm-awq-int4",
+      "gpu": "H100",
+      "suite": "vllm",
+      "quant": "awq-int4"
     }
   ]
 }

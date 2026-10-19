@@ -1,17 +1,17 @@
 {
-  "cost_usd_upper_bound": 5.38645168313998e-05,
-  "error": "AuthError: Token validation failed",
-  "finished_at": "2026-10-19T07:57:03+00:00",
-  "git_sha": "3871f0615c5a9f15dc948b3a3b0aed37ac84bbd1",
-  "github_run_url": "https://github.com/asmisawant/inference-capacity-planner/actions/runs/39219289053",
+  "cost_usd_upper_bound": 0.021821629567115402,
+  "error": "InvalidError: Please add a payment method to use L4 GPU functions.",
+  "finished_at": "2026-10-19T08:01:42+00:00",
+  "git_sha": "c600ab57d83a359bd85295996913b8bb46ec59fa",
+  "github_run_url": "https://github.com/asmisawant/inference-capacity-planner/actions/runs/39219636897",
   "gpu": "L4",
   "id": "002-l4-vllm-bf16",
   "modal_gpu": "L4",
   "price_per_hour": 0.7992,
   "quant": "bf16",
   "reached_modal": false,
-  "started_at": "2026-10-19T07:57:03+00:00",
+  "started_at": "2026-10-19T08:00:13+00:00",
   "status": "error",
   "suite": "vllm",
-  "wall_s": 0.22057541699999916
+  "wall_s": 89.359662437
 }

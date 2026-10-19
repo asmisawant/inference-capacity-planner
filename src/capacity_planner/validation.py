@@ -162,25 +162,30 @@ def spend_summary(results_dir: Path = RESULTS_DIR) -> str:
     )
 
 
-def serve_table(results: list[dict]) -> str:
-    """Online serving runs vs the recommender's prediction for the same load."""
-    from .calibration import measured_configs
-    from .recommend import Workload, predict
+# Serve runs kept out of the fit to check the serve calibration on unseen configurations.
+HOLDOUT_RUNS = frozenset({
+    "029-a100-80gb-serve-bf16-longctx", "030-h100-serve-fp8-longout", "031-l4-serve-fp8-short",
+})
 
-    runs = [r for r in results if r["suite"] == "serve"]
+
+def serve_table(results: list[dict]) -> str:
+    """Online serving runs vs the model (calibrated on all serve runs) for the same load."""
+    from .calibration import measured_configs
+    from .recommend import predict, serve_calibration, serve_runs
+
+    configs = measured_configs(results)
+    runs = serve_runs(results, configs)
     if not runs:
         return NO_RESULTS
-    configs = {c.key: c for c in measured_configs(results)}
+    cal = serve_calibration(results, configs)
     rows = [
         "| GPU | Quant | Load (prompt/output tokens, req/s) | max_num_seqs | TTFT ms p50: predicted / measured | TTFT ms p90: predicted / measured | TPOT ms p50: predicted / measured | Throughput req/s (achieved / offered) | Run |",
         "|---|---|---|---:|---|---|---|---|---|",
     ]
-    for r in runs:
+    for r, c, w in runs:
         s = r["serve"]
         res = r["result"]["serve"]["result"]
-        w = Workload(s["prompt"], s["output"], s["rps"], ttft_slo_s=1e9, tpot_slo_s=1e9)
-        c = configs.get((r["gpu"], r["quant"]))
-        q = predict(c, w, s["max_num_seqs"]) if c else None
+        q = predict(c, w, s["max_num_seqs"], cal.overhead_s)
         p50 = f"{q.ttft_p50_s * 1e3:.0f}" if q else "overloaded"
         p90 = f"{q.ttft_p90_s * 1e3:.0f}" if q else "overloaded"
         tpot = f"{q.busy.tpot_s * 1e3:.1f}" if q else "overloaded"
@@ -194,15 +199,51 @@ def serve_table(results: list[dict]) -> str:
 
 
 def margin_table(results: list[dict]) -> str:
-    """The p90 TTFT safety factors the recommender applies, and the runs behind them."""
-    from .recommend import ttft_margins
+    """The serving overhead and p90 TTFT safety factors the recommender applies."""
+    from .recommend import serve_calibration
 
-    m = ttft_margins(results)
-    if not m.ratios:
+    cal = serve_calibration(results)
+    if not cal.ratios:
         return NO_RESULTS
-    rows = ["| GPU | Measured / predicted p90 TTFT per serve run | Margin applied |", "|---|---|---:|"]
+    rows = [
+        f"Serving overhead: **{cal.overhead_s * 1e3:.1f} ms** (median measured − predicted p50 TTFT over {len(cal.ratios)} serve runs).",
+        "",
+        "| GPU | Measured / predicted p90 TTFT per serve run | Margin applied |",
+        "|---|---|---:|",
+    ]
     for gpu in GPUS:
-        runs = [f"{run_id} ×{ratio:.2f}" for run_id, g, ratio in m.ratios if g == gpu]
-        margin = m(gpu)
-        rows.append(f"| {gpu} | {', '.join(runs) if runs else '_no serve run: largest margin_'} | ×{margin:.2f} |")
+        runs = [f"{run_id} ×{ratio:.2f}" for run_id, g, ratio in cal.ratios if g == gpu]
+        rows.append(f"| {gpu} | {', '.join(runs) if runs else '_no serve run: largest margin_'} | ×{cal(gpu):.2f} |")
+    return "\n".join(rows)
+
+
+def holdout_table(results: list[dict]) -> str:
+    """Fit the serve calibration without HOLDOUT_RUNS, then predict those runs."""
+    from .calibration import measured_configs
+    from .recommend import predict, serve_calibration, serve_runs
+
+    configs = measured_configs(results)
+    held = [(r, c, w) for r, c, w in serve_runs(results, configs) if r["id"] in HOLDOUT_RUNS]
+    if not held:
+        return NO_RESULTS
+    cal = serve_calibration(results, configs, exclude=HOLDOUT_RUNS)
+    rows = [
+        f"Fitted without these runs: overhead {cal.overhead_s * 1e3:.1f} ms; margins "
+        + ", ".join(f"{g} ×{m:.2f}" for g, m in cal.by_gpu.items())
+        + f", others ×{cal.default:.2f}.",
+        "",
+        "| Run | TTFT ms p50: predicted / measured | TTFT ms p90: predicted / measured (error) | p90 × margin vs measured | TPOT ms: predicted / measured |",
+        "|---|---|---|---|---|",
+    ]
+    for r, c, w in held:
+        res = r["result"]["serve"]["result"]
+        q = predict(c, w, r["serve"]["max_num_seqs"], cal.overhead_s)
+        p90, meas = q.ttft_p90_s * 1e3, res["p90_ttft_ms"]
+        safe = p90 * cal(r["gpu"])
+        rows.append(
+            f"| {r['id']} | {q.ttft_p50_s * 1e3:.0f} / {res['median_ttft_ms']:.0f} "
+            f"| {p90:.0f} / {meas:.0f} ({p90 / meas - 1:+.0%}) "
+            f"| {safe:.0f} vs {meas:.0f}: {'covers' if safe >= meas else '**misses**'} "
+            f"| {q.busy.tpot_s * 1e3:.1f} / {res['median_tpot_ms']:.1f} |"
+        )
     return "\n".join(rows)

@@ -204,14 +204,14 @@ def test_kv_cache_limits_batch():
 def test_tie_break_prefers_less_quantization():
     results = [micro_run(), vllm_run(quant="awq-int4"), vllm_run(quant="bf16")]
     w = rec.Workload(1024, 256, rps=1, ttft_slo_s=1, tpot_slo_s=1)
-    recs = rec.recommend(w, configs=cal.measured_configs(results), margins=rec.Margins({}, ()))
+    recs = rec.recommend(w, configs=cal.measured_configs(results), cal=rec.NO_CALIBRATION)
     assert [r.quant for r in recs] == ["bf16", "awq-int4"]
     assert recs[0].cost_per_hour == recs[1].cost_per_hour
 
 
 def test_quant_filter(results):
     w = rec.Workload(1024, 256, rps=1, ttft_slo_s=1, tpot_slo_s=1)
-    assert rec.recommend(w, quants={"fp8"}, configs=cal.measured_configs(results), margins=rec.Margins({}, ())) == []
+    assert rec.recommend(w, quants={"fp8"}, configs=cal.measured_configs(results), cal=rec.NO_CALIBRATION) == []
 
 
 def test_predict_and_overload(config):
@@ -259,25 +259,40 @@ def test_serve_table(results):
     assert val.serve_table(results) == val.NO_RESULTS
 
 
-def _serve_run(run_id, gpu, p90_ms):
+def _serve_run(run_id, gpu, p50_ms, p90_ms):
     return {
         "id": run_id, "gpu": gpu, "suite": "serve", "quant": "bf16", "status": "ok",
         "finished_at": "2026-10-19T01:00:00+00:00", "github_run_url": "u",
         "serve": {"prompt": 1024, "output": 256, "rps": 1, "max_num_seqs": 64},
-        "result": {"serve": {"result": {"p90_ttft_ms": p90_ms, "median_ttft_ms": 1, "median_tpot_ms": 1,
+        "result": {"serve": {"result": {"p90_ttft_ms": p90_ms, "median_ttft_ms": p50_ms, "median_tpot_ms": 1,
                                         "request_throughput": 1}}},
     }
 
 
-def test_ttft_margins(results, config):
+def test_serve_calibration(results, config):
     w = rec.Workload(1024, 256, rps=1, ttft_slo_s=1e9, tpot_slo_s=1e9)
-    pred_ms = rec.predict(config, w, 64).ttft_p90_s * 1e3
-    m = rec.ttft_margins(results + [_serve_run("s1", "H100", 1.5 * pred_ms), _serve_run("s2", "H100", 0.5 * pred_ms)])
-    assert m("H100") == pytest.approx(1.5)  # worst run
-    assert m("L4") == pytest.approx(1.5)  # no serve run: largest margin
-    low = rec.ttft_margins(results + [_serve_run("s3", "H100", 0.5 * pred_ms)])
-    assert low("H100") == 1.0  # never below 1
-    assert rec.ttft_margins(results).default == 1.0
+    q = rec.predict(config, w, 64)
+    p50, p90 = q.ttft_p50_s * 1e3, q.ttft_p90_s * 1e3
+    runs = [
+        _serve_run("s1", "H100", p50 + 30, p90 + 30 + 50),  # overhead 30 ms, then 50 ms worse at p90
+        _serve_run("s2", "H100", p50 + 30, 0.5 * (p90 + 30)),
+        _serve_run("s3", "H100", p50 + 30, p90 + 30),
+    ]
+    cal = rec.serve_calibration(results + runs, [config])
+    assert cal.overhead_s == pytest.approx(0.030)
+    assert cal("H100") == pytest.approx((p90 + 80) / (p90 + 30))  # worst run
+    assert cal("L4") == cal("H100")  # no serve run: largest margin
+    # Excluding runs refits without them; never below 1.
+    assert rec.serve_calibration(results + runs, [config], exclude=frozenset({"s1"}))("H100") == 1.0
+    assert rec.serve_calibration(results, [config]) == rec.NO_CALIBRATION
+
+
+def test_overhead_shifts_ttft_but_not_tpot(config):
+    w = rec.Workload(1024, 256, rps=1, ttft_slo_s=1e9, tpot_slo_s=1e9)
+    a, b = rec.predict(config, w, 64), rec.predict(config, w, 64, overhead_s=0.05)
+    assert b.ttft_p90_s == pytest.approx(a.ttft_p90_s + 0.05)
+    assert b.ttft_p50_s == pytest.approx(a.ttft_p50_s + 0.05)
+    assert b.busy.tpot_s == a.busy.tpot_s
 
 
 def test_margin_makes_recommendation_more_conservative(config):

@@ -339,31 +339,46 @@ Only (GPU, quant) pairs that vLLM ran are considered. For each, the recommender 
 
 - TPOT = decode step(B) + B × prefill / output tokens. Every request's prefill is charged as extra time that doesn't overlap with decode, which is conservative.
 - `max_num_seqs` (the slots) = the largest B whose TPOT and idle TTFT (prefill + one decode step) meet the targets.
-- **TTFT under load** = TTFT at the busy batch + half a decode step (a new request waits for the running step to finish) + two queueing waits, combined exactly as independent random variables:
+- **TTFT under load** = TTFT at the busy batch + half a decode step (a new request waits for the running step to finish) + a fixed **serving overhead** + two queueing waits, combined exactly as independent random variables. The serving overhead covers what the offline TTFT measurements skip (HTTP, tokenizing the prompt text, streaming): the median measured − predicted p50 TTFT over the serve runs. The two waits are:
   - **slot wait:** requests arrive at random, so a burst can fill every slot. Each replica is a queue with `max_num_seqs` parallel slots (M/D/c). The service time is TTFT + output tokens × TPOT at the busy batch, and the waiting probability is Erlang C.
   - **prefill wait:** one GPU processes one prompt at a time, so prompts queue behind each other (M/D/1, service time = TTFT).
 
   Each wait is exponential when it happens, with the M/M/c rate doubled (Allen–Cunneen with deterministic service), because fixed-length requests take nearly constant time.
 - Busy slots = the expected number of requests in flight, from Little's law. TPOT is reported at that batch.
-- **Safety margin:** the predicted p90 TTFT is multiplied by a per-GPU margin before it is checked against the target. The margin is the largest measured ÷ predicted p90 TTFT among that GPU's serve runs, never below 1. GPUs without a serve run use the largest margin of any GPU. Replicas are added until the margined p90 TTFT meets the target.
+- **Safety margin:** the predicted p90 TTFT, overhead included, is multiplied by a per-GPU margin before it is checked against the target. The margin is the largest measured ÷ predicted p90 TTFT among that GPU's serve runs, never below 1. GPUs without a serve run use the largest margin of any GPU. Replicas are added until the margined p90 TTFT meets the target.
 
 How the model got here, one serve run at a time:
 1. **Run 023, no queueing model:** with 15 slots at 81% average occupancy, the p90 TTFT was 4.0 s against a predicted 0.23 s. This added the slot queue.
 2. **Runs 024–028:** the p90 TTFT came in 2–3× above prediction even where no slot queueing was expected. This added the prefill queue.
 3. **Run 026:** the slot queue, costed at full occupancy, predicted 663 ms against 93 ms measured. The service time is now taken at the busy batch.
-4. **All six runs:** the step wait was added, and the waits are now summed as distributions rather than as percentiles.
+4. **All six runs:** the step wait was added, and the waits are now summed as distributions rather than as percentiles. Median TTFT was still low by a near-constant 19–70 ms on every run.
+5. **Runs 029–031** were new configurations: A100-80GB, H100 FP8, and L4 with shorter prompts. TPOT held up (+1% to +11%), but the p90 TTFT came in up to 32% low. The H100 margin of ×1.00 would not have covered it. The fixed serving overhead explains the near-constant gap from step 4. Fitted on runs 023–028 only, it brings the hold-out runs to within −6% to +10% (table below).
 
-With the current model, the raw predictions below are within −31% to +3% of measured p90 TTFT; the L4 is −31%, everything else −14% to +3%. TPOT is within 3%, except the H100 at 18–21% high. Median TTFT is 10–45% low; the recommender does not use it.
+The overhead and margins the recommender uses, fitted on all serve runs:
 
 <!-- BEGIN GENERATED: ttft_margins -->
+Serving overhead: **33.5 ms** (median measured − predicted p50 TTFT over 9 serve runs).
+
 | GPU | Measured / predicted p90 TTFT per serve run | Margin applied |
 |---|---|---:|
-| L4 | 023-l4-serve-fp8-chat ×1.14, 027-l4-serve-fp8-chat ×1.44, 031-l4-serve-fp8-short ×0.99 | ×1.44 |
-| A10G | 028-a10g-serve-awq-chat ×1.13 | ×1.13 |
-| A100-40GB | 024-a100-40gb-serve-bf16-chat ×1.16 | ×1.16 |
-| A100-80GB | 029-a100-80gb-serve-bf16-longctx ×1.21 | ×1.21 |
-| H100 | 025-h100-serve-bf16-longctx ×0.98, 026-h100-serve-bf16-offline ×1.00, 030-h100-serve-fp8-longout ×1.46 | ×1.46 |
+| L4 | 023-l4-serve-fp8-chat ×1.13, 027-l4-serve-fp8-chat ×1.31, 031-l4-serve-fp8-short ×0.91 | ×1.31 |
+| A10G | 028-a10g-serve-awq-chat ×1.06 | ×1.06 |
+| A100-40GB | 024-a100-40gb-serve-bf16-chat ×0.98 | ×1.00 |
+| A100-80GB | 029-a100-80gb-serve-bf16-longctx ×1.07 | ×1.07 |
+| H100 | 025-h100-serve-bf16-longctx ×0.81, 026-h100-serve-bf16-offline ×0.73, 030-h100-serve-fp8-longout ×0.91 | ×1.00 |
 <!-- END GENERATED: ttft_margins -->
+
+**Hold-out check:** the calibration is refitted without runs 029–031, then used to predict them.
+
+<!-- BEGIN GENERATED: serve_holdout -->
+Fitted without these runs: overhead 33.9 ms; margins L4 ×1.31, H100 ×1.00, A100-40GB ×1.00, A10G ×1.06, others ×1.31.
+
+| Run | TTFT ms p50: predicted / measured | TTFT ms p90: predicted / measured (error) | p90 × margin vs measured | TPOT ms: predicted / measured |
+|---|---|---|---|---|
+| 030-h100-serve-fp8-longout | 62 / 54 | 89 / 81 (+10%) | 89 vs 81: covers | 9.6 / 9.5 |
+| 029-a100-80gb-serve-bf16-longctx | 179 / 179 | 279 / 297 (-6%) | 365 vs 297: covers | 14.9 / 14.5 |
+| 031-l4-serve-fp8-short | 199 / 208 | 392 / 355 (+10%) | 513 vs 355: covers | 57.6 / 51.8 |
+<!-- END GENERATED: serve_holdout -->
 
 The cheapest $/hr wins; ties go to less quantization, then lower TPOT.
 
@@ -372,9 +387,9 @@ The cheapest $/hr wins; ties go to less quantization, then lower TPOT.
 
 | GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| A100-40GB | bf16 | 1 | 2.10 | 0.091 | 0.455 | 29 (110) | 218 (×1.16) | 22.0 | 360,528 | 012-a100-40gb-vllm-bf16 |
-| A100-80GB | bf16 | 1 | 2.50 | 0.108 | 0.542 | 23 (117) | 212 (×1.21) | 17.6 | 1,045,408 | 013-a100-80gb-vllm-bf16 |
-| A100-80GB | awq-int4 | 1 | 2.50 | 0.108 | 0.542 | 16 (89) | 304 (×1.21) | 11.9 | 1,231,408 | 020-a100-80gb-vllm-awq-int4 |
+| A100-40GB | bf16 | 1 | 2.10 | 0.091 | 0.455 | 29 (110) | 222 (×1.00) | 22.0 | 360,528 | 012-a100-40gb-vllm-bf16 |
+| A100-80GB | bf16 | 1 | 2.50 | 0.108 | 0.542 | 23 (117) | 223 (×1.07) | 17.6 | 1,045,408 | 013-a100-80gb-vllm-bf16 |
+| A100-80GB | awq-int4 | 1 | 2.50 | 0.108 | 0.542 | 16 (89) | 303 (×1.07) | 11.9 | 1,231,408 | 020-a100-80gb-vllm-awq-int4 |
 
 Not feasible: L4 bf16 (misses SLO: TPOT 57.6 ms at batch 1).
 
@@ -382,9 +397,9 @@ Not feasible: L4 bf16 (misses SLO: TPOT 57.6 ms at batch 1).
 
 | GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| H100 | bf16 | 2 | 7.90 | 0.048 | 0.429 | 42 (98) | 245 (×1.46) | 16.1 | 1,035,104 | 014-h100-vllm-bf16 |
-| H100 | fp8 | 2 | 7.90 | 0.048 | 0.429 | 23 (131) | 128 (×1.46) | 8.7 | 1,149,168 | 017-h100-vllm-fp8 |
-| H100 | awq-int4 | 2 | 7.90 | 0.048 | 0.429 | 38 (93) | 238 (×1.46) | 14.6 | 1,203,072 | 021-h100-vllm-awq-int4 |
+| H100 | bf16 | 2 | 7.90 | 0.048 | 0.429 | 42 (98) | 201 (×1.00) | 16.1 | 1,035,104 | 014-h100-vllm-bf16 |
+| H100 | fp8 | 2 | 7.90 | 0.048 | 0.429 | 23 (131) | 121 (×1.00) | 8.7 | 1,149,168 | 017-h100-vllm-fp8 |
+| H100 | awq-int4 | 2 | 7.90 | 0.048 | 0.429 | 38 (93) | 196 (×1.00) | 14.6 | 1,203,072 | 021-h100-vllm-awq-int4 |
 
 Not feasible: A10G bf16 (misses SLO: TTFT 446 ms at batch 1, TPOT 34.2 ms at batch 1); L4 bf16 (misses SLO: TTFT 563 ms at batch 1, TPOT 58.8 ms at batch 1); L4 fp8 (misses SLO: TTFT 438 ms at batch 1, TPOT 36.4 ms at batch 1); A10G awq-int4 (misses SLO: TTFT 465 ms at batch 1); L4 awq-int4 (misses SLO: TTFT 595 ms at batch 1).
 
@@ -392,9 +407,9 @@ Not feasible: A10G bf16 (misses SLO: TTFT 446 ms at batch 1, TPOT 34.2 ms at bat
 
 | GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| H100 | bf16 | 2 | 7.90 | 0.043 | 0.086 | 222 (256) | 136 (×1.46) | 17.3 | 1,035,104 | 014-h100-vllm-bf16 |
-| H100 | fp8 | 2 | 7.90 | 0.043 | 0.086 | 124 (256) | 64 (×1.46) | 9.6 | 1,149,168 | 017-h100-vllm-fp8 |
-| A100-40GB | bf16 | 5 | 10.49 | 0.057 | 0.114 | 200 (256) | 253 (×1.16) | 38.9 | 360,528 | 012-a100-40gb-vllm-bf16 |
+| H100 | bf16 | 2 | 7.90 | 0.043 | 0.086 | 222 (256) | 126 (×1.00) | 17.3 | 1,035,104 | 014-h100-vllm-bf16 |
+| H100 | fp8 | 2 | 7.90 | 0.043 | 0.086 | 124 (256) | 78 (×1.00) | 9.6 | 1,149,168 | 017-h100-vllm-fp8 |
+| A100-40GB | bf16 | 5 | 10.49 | 0.057 | 0.114 | 200 (256) | 252 (×1.00) | 38.9 | 360,528 | 012-a100-40gb-vllm-bf16 |
 <!-- END GENERATED: recommend_examples -->
 
 ### Validation under real load
@@ -404,15 +419,15 @@ Each `serve` run starts `vllm serve` with the recommended `max_num_seqs` and dri
 <!-- BEGIN GENERATED: serve_validation -->
 | GPU | Quant | Load (prompt/output tokens, req/s) | max_num_seqs | TTFT ms p50: predicted / measured | TTFT ms p90: predicted / measured | TPOT ms p50: predicted / measured | Throughput req/s (achieved / offered) | Run |
 |---|---|---|---:|---|---|---|---|---|
-| L4 | fp8 | 1024/256, 1 | 15 | 272 / 342 | 3506 / 4003 | 47.6 / 48.1 | 0.93 / 1 | [023-l4-serve-fp8-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39226920677) |
-| H100 | bf16 | 2048/256, 10 | 98 | 66 / 85 | 167 / 163 | 16.1 / 13.3 | 9.84 / 10 | [025-h100-serve-bf16-longctx](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
-| A100-40GB | bf16 | 1024/256, 5 | 110 | 89 / 126 | 188 / 218 | 22.0 / 21.6 | 4.86 / 5 | [024-a100-40gb-serve-bf16-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
-| H100 | bf16 | 512/512, 25 | 256 | 38 / 69 | 93 / 93 | 17.3 / 14.7 | 24.08 / 25 | [026-h100-serve-bf16-offline](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
-| A10G | awq-int4 | 1024/256, 1.667 | 35 | 246 / 273 | 523 / 590 | 20.1 / 19.8 | 1.62 / 1.667 | [028-a10g-serve-awq-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
-| L4 | fp8 | 1024/256, 0.714 | 15 | 245 / 290 | 332 / 480 | 42.6 / 42.3 | 0.67 / 0.714 | [027-l4-serve-fp8-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
-| H100 | fp8 | 1024/512, 15 | 256 | 29 / 54 | 55 / 81 | 9.6 / 9.5 | 14.63 / 15 | [030-h100-serve-fp8-longout](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39321416205) |
-| A100-80GB | bf16 | 2048/256, 2 | 48 | 145 / 179 | 245 / 297 | 14.9 / 14.5 | 1.95 / 2 | [029-a100-80gb-serve-bf16-longctx](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39321416205) |
-| L4 | fp8 | 512/128, 3 | 43 | 165 / 208 | 358 / 355 | 57.6 / 51.8 | 2.88 / 3 | [031-l4-serve-fp8-short](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39321416205) |
+| L4 | fp8 | 1024/256, 1 | 15 | 306 / 342 | 3540 / 4003 | 47.6 / 48.1 | 0.93 / 1 | [023-l4-serve-fp8-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39226920677) |
+| H100 | bf16 | 2048/256, 10 | 98 | 100 / 85 | 201 / 163 | 16.1 / 13.3 | 9.84 / 10 | [025-h100-serve-bf16-longctx](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
+| A100-40GB | bf16 | 1024/256, 5 | 110 | 123 / 126 | 222 / 218 | 22.0 / 21.6 | 4.86 / 5 | [024-a100-40gb-serve-bf16-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
+| H100 | bf16 | 512/512, 25 | 256 | 71 / 69 | 126 / 93 | 17.3 / 14.7 | 24.08 / 25 | [026-h100-serve-bf16-offline](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
+| A10G | awq-int4 | 1024/256, 1.667 | 35 | 280 / 273 | 557 / 590 | 20.1 / 19.8 | 1.62 / 1.667 | [028-a10g-serve-awq-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
+| L4 | fp8 | 1024/256, 0.714 | 15 | 279 / 290 | 366 / 480 | 42.6 / 42.3 | 0.67 / 0.714 | [027-l4-serve-fp8-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
+| H100 | fp8 | 1024/512, 15 | 256 | 62 / 54 | 89 / 81 | 9.6 / 9.5 | 14.63 / 15 | [030-h100-serve-fp8-longout](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39321416205) |
+| A100-80GB | bf16 | 2048/256, 2 | 48 | 179 / 179 | 278 / 297 | 14.9 / 14.5 | 1.95 / 2 | [029-a100-80gb-serve-bf16-longctx](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39321416205) |
+| L4 | fp8 | 512/128, 3 | 43 | 199 / 208 | 391 / 355 | 57.6 / 51.8 | 2.88 / 3 | [031-l4-serve-fp8-short](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39321416205) |
 <!-- END GENERATED: serve_validation -->
 
 ## Development

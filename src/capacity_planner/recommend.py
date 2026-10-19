@@ -86,7 +86,7 @@ class QueuePrediction:
     p_prefill: float  # chance a request arrives while another prefill is running
     prefill_rate: float
     busy: OperatingPoint  # at the expected number of busy slots
-    base_ttft_s: float  # busy TTFT + half a decode step (arrival waits for the running step)
+    base_ttft_s: float  # busy TTFT + half a decode step + serving overhead
 
     def wait_survival(self, t: float) -> float:
         """P(slot wait + prefill wait > t)."""
@@ -130,7 +130,7 @@ class Recommendation:
     price_per_hour: float = 0.0
     run_id: str = ""
     compile_fallback: bool = False
-    ttft_margin: float = 1.0  # p90 TTFT safety factor from serve runs (see ttft_margins)
+    ttft_margin: float = 1.0  # p90 TTFT safety factor from serve runs (see serve_calibration)
 
     @property
     def operating(self) -> OperatingPoint | None:
@@ -168,9 +168,10 @@ def operating_point(c: MeasuredConfig, w: Workload, batch: int) -> OperatingPoin
     )
 
 
-def evaluate(c: MeasuredConfig, w: Workload, ttft_margin: float = 1.0) -> Recommendation:
-    """Cheapest replica count for one config. The p90 TTFT must meet the target after
-    multiplying by `ttft_margin` (from serve runs, see ttft_margins)."""
+def evaluate(c: MeasuredConfig, w: Workload, ttft_margin: float = 1.0, overhead_s: float = 0.0) -> Recommendation:
+    """Cheapest replica count for one config. The p90 TTFT (including `overhead_s`) must
+    meet the target after multiplying by `ttft_margin` (both from serve runs, see
+    serve_calibration)."""
     base = dict(
         ttft_margin=ttft_margin,
         gpu=c.gpu.name,
@@ -203,14 +204,20 @@ def evaluate(c: MeasuredConfig, w: Workload, ttft_margin: float = 1.0) -> Recomm
     slots = max(ok, key=lambda p: p.capacity_rps).batch
     start = max(1, math.ceil(w.rps / ok[-1].capacity_rps))
     for replicas in range(start, start * 20 + 20):
-        q = queue_prediction(c, w, slots, w.rps / replicas)
+        q = queue_prediction(c, w, slots, w.rps / replicas, overhead_s)
         if q is not None and q.ttft_p90_s * ttft_margin <= w.ttft_slo_s:
             return Recommendation(feasible=True, replicas=replicas, max_num_seqs=slots, queue=q, **base)
     return Recommendation(feasible=False, reason="queueing keeps p90 TTFT above target", **base)
 
 
-def queue_prediction(c: MeasuredConfig, w: Workload, slots: int, rps: float) -> QueuePrediction | None:
-    """One replica with `slots` = max_num_seqs at `rps`; None if it can't keep up."""
+def queue_prediction(
+    c: MeasuredConfig, w: Workload, slots: int, rps: float, overhead_s: float = 0.0
+) -> QueuePrediction | None:
+    """One replica with `slots` = max_num_seqs at `rps`; None if it can't keep up.
+
+    `overhead_s` is the fixed per-request cost of the online path (HTTP, tokenizing the
+    prompt text, streaming) that the offline TTFT measurements don't include.
+    """
     busy = busy_point(c, w, slots, rps)
     service = busy.ttft_s + w.output_len * busy.tpot_s
     a = rps * service
@@ -228,7 +235,7 @@ def queue_prediction(c: MeasuredConfig, w: Workload, slots: int, rps: float) -> 
         p_prefill=rho,
         prefill_rate=acf * (1 / busy.ttft_s - rps),
         busy=busy,
-        base_ttft_s=busy.ttft_s + busy.decode_step_s / 2,
+        base_ttft_s=busy.ttft_s + busy.decode_step_s / 2 + overhead_s,
     )
 
 
@@ -251,21 +258,25 @@ def busy_point(c: MeasuredConfig, w: Workload, slots: int, rps: float) -> Operat
 QUANT_PREFERENCE = {"bf16": 0, "fp8": 1, "awq-int4": 2}
 
 
-def predict(c: MeasuredConfig, w: Workload, max_num_seqs: int) -> QueuePrediction | None:
+def predict(c: MeasuredConfig, w: Workload, max_num_seqs: int, overhead_s: float = 0.0) -> QueuePrediction | None:
     """One replica with this max_num_seqs at w.rps (as limited by KV cache and measurements)."""
     slots = min(max_num_seqs, c.kv_cache_tokens // (w.prompt_len + w.output_len), c.max_measured_batch)
-    return queue_prediction(c, w, slots, w.rps) if slots >= 1 else None
+    return queue_prediction(c, w, slots, w.rps, overhead_s) if slots >= 1 else None
 
 
 @dataclass(frozen=True)
-class Margins:
-    """p90 TTFT safety factors: measured / predicted on serve runs, never below 1.
+class ServeCalibration:
+    """What the serve runs add to the model.
 
-    Per GPU from that GPU's serve runs; GPUs without any use the largest margin seen.
+    - overhead_s: median over runs of measured - predicted p50 TTFT, the fixed cost of
+      the online path that offline TTFT measurements miss;
+    - by_gpu: p90 TTFT safety factor, the worst measured / predicted (with overhead)
+      over that GPU's runs, never below 1. GPUs without runs use the largest.
     """
 
+    overhead_s: float
     by_gpu: dict[str, float]
-    ratios: tuple[tuple[str, str, float], ...]  # (run id, gpu, measured / predicted)
+    ratios: tuple[tuple[str, str, float], ...]  # (run id, gpu, measured / predicted p90)
 
     @property
     def default(self) -> float:
@@ -275,37 +286,60 @@ class Margins:
         return self.by_gpu.get(gpu, self.default)
 
 
-def ttft_margins(results: list[dict] | None = None, configs: list[MeasuredConfig] | None = None) -> Margins:
+NO_CALIBRATION = ServeCalibration(0.0, {}, ())
+
+
+def serve_runs(results: list[dict], configs: list[MeasuredConfig]) -> list[tuple[dict, MeasuredConfig, Workload]]:
+    by_key = {c.key: c for c in configs}
+    out = []
+    for r in results:
+        if r["suite"] == "serve" and (r["gpu"], r["quant"]) in by_key:
+            s = r["serve"]
+            w = Workload(s["prompt"], s["output"], s["rps"], ttft_slo_s=1e9, tpot_slo_s=1e9)
+            out.append((r, by_key[(r["gpu"], r["quant"])], w))
+    return out
+
+
+def serve_calibration(
+    results: list[dict] | None = None,
+    configs: list[MeasuredConfig] | None = None,
+    exclude: frozenset[str] = frozenset(),
+) -> ServeCalibration:
+    """Fit overhead and margins on serve runs, leaving out run ids in `exclude`."""
+    import statistics
+
     from .validation import load_results
 
     results = load_results() if results is None else results
-    by_key = {c.key: c for c in (measured_configs(results) if configs is None else configs)}
-    ratios = []
-    for r in results:
-        if r["suite"] != "serve" or (r["gpu"], r["quant"]) not in by_key:
-            continue
-        s = r["serve"]
-        w = Workload(s["prompt"], s["output"], s["rps"], ttft_slo_s=1e9, tpot_slo_s=1e9)
-        q = predict(by_key[(r["gpu"], r["quant"])], w, s["max_num_seqs"])
-        if q is not None:
-            measured = r["result"]["serve"]["result"]["p90_ttft_ms"] / 1e3
-            ratios.append((r["id"], r["gpu"], measured / q.ttft_p90_s))
+    configs = measured_configs(results) if configs is None else configs
+    preds = []
+    for r, c, w in serve_runs(results, configs):
+        q = predict(c, w, r["serve"]["max_num_seqs"])
+        if q is not None and r["id"] not in exclude:
+            preds.append((r, q))
+    if not preds:
+        return NO_CALIBRATION
+    measured = lambda r, k: r["result"]["serve"]["result"][k] / 1e3  # noqa: E731
+    overhead = max(0.0, statistics.median(measured(r, "median_ttft_ms") - q.ttft_p50_s for r, q in preds))
+    ratios = tuple((r["id"], r["gpu"], measured(r, "p90_ttft_ms") / (q.ttft_p90_s + overhead)) for r, q in preds)
     by_gpu: dict[str, float] = {}
     for _, gpu, ratio in ratios:
         by_gpu[gpu] = max(by_gpu.get(gpu, 1.0), ratio)
-    return Margins(by_gpu, tuple(ratios))
+    return ServeCalibration(overhead, by_gpu, ratios)
 
 
 def recommend(
     w: Workload,
     quants: set[str] | None = None,
     configs: list[MeasuredConfig] | None = None,
-    margins: Margins | None = None,
+    cal: ServeCalibration | None = None,
 ) -> list[Recommendation]:
     """All measured configs, feasible ones first, cheapest first."""
     configs = measured_configs() if configs is None else configs
-    margins = ttft_margins(configs=configs) if margins is None else margins
-    recs = [evaluate(c, w, margins(c.gpu.name)) for c in configs if quants is None or c.quant.name in quants]
+    cal = serve_calibration(configs=configs) if cal is None else cal
+    recs = [
+        evaluate(c, w, cal(c.gpu.name), cal.overhead_s) for c in configs if quants is None or c.quant.name in quants
+    ]
 
     def key(r: Recommendation):
         tpot = r.operating.tpot_s if r.operating else 0.0
@@ -351,10 +385,10 @@ EXAMPLES = (
 
 def examples_markdown(top: int = 3) -> str:
     configs = measured_configs()
-    margins = ttft_margins(configs=configs)
+    cal = serve_calibration(configs=configs)
     parts = []
     for name, w in EXAMPLES:
-        recs = recommend(w, configs=configs, margins=margins)
+        recs = recommend(w, configs=configs, cal=cal)
         parts.append(f"**{name}:** {describe(w)}.\n\n{table(w, recs, top)}")
     return "\n\n".join(parts)
 

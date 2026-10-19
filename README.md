@@ -430,6 +430,41 @@ Each `serve` run starts `vllm serve` with the recommended `max_num_seqs` and dri
 | L4 | fp8 | 512/128, 3 | 43 | 199 / 208 | 391 / 355 | 57.6 / 51.8 | 2.88 / 3 | [031-l4-serve-fp8-short](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39321416205) |
 <!-- END GENERATED: serve_validation -->
 
+## Predicting models we never benchmarked
+
+Everything above was measured on Qwen2.5-7B. To test whether the planner works for other
+models, `capacity_planner.transfer` predicts vLLM's behaviour for a new model from that
+model's config alone. The per-(GPU, quant) corrections learned on Qwen-7B (TTFT
+`c0 + c1 × roofline`, decode `a × roofline + b × batch`, non-KV memory overhead) are
+applied to the new model's roofline. Tensor parallelism splits weights, FLOPs and KV
+heads across GPUs and adds two NVLink all-reduces per layer.
+
+The two test models differ from Qwen-7B in ways the roofline has to get right:
+
+- **IBM Granite-3.1-8B**: 40 layers instead of 28, twice the KV bytes per token, and a 49k vocabulary.
+- **Qwen2.5-32B**: needs FP8, AWQ or two GPUs.
+
+The predictions were frozen in `predictions/transfer.json` and committed before any of
+these GPU runs. The table reads only that file, so later changes to the code can't move
+the goalposts.
+
+"Worst error" is predicted / measured − 1 at the prompt length or batch where it is largest.
+"Transfer" is the method above. "Roofline" is the efficiency-corrected roofline alone.
+
+<!-- BEGIN GENERATED: transfer_check -->
+| Model | GPUs | Quant | KV tokens: predicted / measured | TTFT ms at 1024: predicted / measured | TTFT worst error: transfer / roofline | Decode step ms at batch 1: predicted / measured | Decode worst error: transfer / roofline | Run |
+|---|---|---|---:|---:|---:|---:|---:|---|
+| Granite-3.1-8B-Instruct | L4 | bf16 | 14,521 / – | 318 / – | – | 61.4 / – | – | not run yet |
+| Granite-3.1-8B-Instruct | L4 | fp8 | 68,685 / – | 242 / – | – | 32.9 / – | – | not run yet |
+| Granite-3.1-8B-Instruct | A100-40GB | bf16 | 119,379 / – | 81 / – | – | 13.2 / – | – | not run yet |
+| Granite-3.1-8B-Instruct | H100 | bf16 | 355,505 / – | 29 / – | – | 6.6 / – | – | not run yet |
+| Granite-3.1-8B-Instruct | H100 | fp8 | 404,229 / – | 21 / – | – | 4.1 / – | – | not run yet |
+| Qwen2.5-32B-Instruct | H100 | fp8 | 153,653 / – | 76 / – | – | 16.6 / – | – | not run yet |
+| Qwen2.5-32B-Instruct | A100-80GB | awq-int4 | 216,870 / – | 417 / – | – | 16.4 / – | – | not run yet |
+| Qwen2.5-32B-Instruct | 2× H100 | bf16 | 319,090 / – | 58 / – | – | 13.2 / – | – | not run yet |
+| Qwen2.5-32B-Instruct | 2× A100-80GB | bf16 | 323,595 / – | 158 / – | – | 21.3 / – | – | not run yet |
+<!-- END GENERATED: transfer_check -->
+
 ## Development
 
 ```bash
@@ -441,6 +476,7 @@ python -m capacity_planner.report --update-readme  # regenerate README tables
 
 ## Plan
 
-1. **GPU specs + roofline formulas** (this step).
+1. **GPU specs + roofline formulas** (done).
 2. **Benchmarks on Modal via GitHub Actions** (vLLM first, then SGLang; Qwen2.5-7B-Instruct; budget < $40) to measure memory overhead and achieved FLOPs/bandwidth (done; see the tables above).
-3. **Calibrate the roofline and build the recommender**: model + SLOs + traffic → GPU, engine, quantization, batch size, KV-cache size, $/1M tokens; validated with `vllm serve` under load (in progress).
+3. **Calibrate the roofline and build the recommender**: model + SLOs + traffic → GPU, engine, quantization, batch size, KV-cache size, $/1M tokens; validated with `vllm serve` under load (done).
+4. **Predict unmeasured models and multi-GPU setups**, then check the predictions against new runs (in progress).

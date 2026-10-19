@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from . import roofline as rf
-from . import calibration, recommend, validation
+from . import calibration, recommend, transfer, validation
 from .gpus import GPUS
 from .models import load_model
 
@@ -99,6 +99,7 @@ SECTIONS = {
     "serve_validation": lambda: validation.serve_table(validation.load_results()),
     "ttft_margins": lambda: validation.margin_table(validation.load_results()),
     "serve_holdout": lambda: validation.holdout_table(validation.load_results()),
+    "transfer_check": lambda: transfer.comparison_table(),
 }
 
 

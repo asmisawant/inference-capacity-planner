@@ -94,7 +94,7 @@ GPU runs are launched by GitHub Actions (`.github/workflows/bench.yml`) on [Moda
 - **Results:** each run is committed as `results/<id>.json` together with the tables below, which the workflow regenerates.
 
 Spend so far: <!-- BEGIN GENERATED: bench_spend -->
-9 runs (1 succeeded), at most **$0.11** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
+10 runs (2 succeeded), at most **$0.23** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
 <!-- END GENERATED: bench_spend -->
 
 ### Measured GPU throughput vs datasheet
@@ -110,13 +110,21 @@ Spend so far: <!-- BEGIN GENERATED: bench_spend -->
 The roofline KV capacity assumes zero overhead. "Non-KV overhead" = GPU memory × utilization − weights − KV cache, using vLLM's own log figures; it covers activations, CUDA graphs and the CUDA context.
 
 <!-- BEGIN GENERATED: measured_vllm_memory -->
-_No benchmark results yet._
+| GPU | Quant | Weights GiB (vLLM / roofline) | KV cache GiB (vLLM) | Non-KV overhead GiB (derived) | KV tokens (vLLM / roofline) | Run |
+|---|---|---:|---:|---:|---:|---|
+| L4 | bf16 | 14.29 / 14.19 | 3.25 | 3.15 | 60,816 / 147,826 | [004-l4-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39220974066) |
 <!-- END GENERATED: measured_vllm_memory -->
 
 ### TTFT: vLLM vs roofline
 
 <!-- BEGIN GENERATED: measured_ttft -->
-_No benchmark results yet._
+| GPU | Quant | Prompt tokens | TTFT ms (vLLM, median) | TTFT ms (roofline) | vLLM / roofline |
+|---|---|---:|---:|---:|---:|
+| L4 | bf16 | 128 | 71.1 | 50.8 | 1.40 |
+| L4 | bf16 | 512 | 148.0 | 55.7 | 2.66 |
+| L4 | bf16 | 1024 | 263.7 | 112.2 | 2.35 |
+| L4 | bf16 | 2048 | 522.2 | 227.9 | 2.29 |
+| L4 | bf16 | 4000 | 1074.2 | 458.0 | 2.35 |
 <!-- END GENERATED: measured_ttft -->
 
 ### Decode: vLLM vs roofline
@@ -124,7 +132,15 @@ _No benchmark results yet._
 Roofline TPOT uses the mean decode context (512 + 64 tokens). Throughput is output tokens over the engine time from first request queued to last token. $/1M uses the Modal price in the spec table and counts only output tokens.
 
 <!-- BEGIN GENERATED: measured_decode -->
-_No benchmark results yet._
+| GPU | Quant | Batch | TPOT ms (vLLM, median) | TPOT ms (roofline) | vLLM / roofline | Output tok/s (vLLM) | $/1M output tokens (vLLM) |
+|---|---|---:|---:|---:|---:|---:|---:|
+| L4 | bf16 | 1 | 56.47 | 50.88 | 1.11 | 17 | 12.700 |
+| L4 | bf16 | 2 | 58.19 | 50.99 | 1.14 | 33 | 6.640 |
+| L4 | bf16 | 4 | 58.05 | 51.21 | 1.13 | 64 | 3.448 |
+| L4 | bf16 | 8 | 58.91 | 51.65 | 1.14 | 119 | 1.860 |
+| L4 | bf16 | 16 | 60.54 | 52.54 | 1.15 | 209 | 1.063 |
+| L4 | bf16 | 32 | 74.96 | 54.30 | 1.38 | 320 | 0.694 |
+| L4 | bf16 | 64 | 98.33 | 57.83 | 1.70 | 452 | 0.491 |
 <!-- END GENERATED: measured_decode -->
 
 ## Development

@@ -340,9 +340,15 @@ Only (GPU, quant) pairs that vLLM ran are considered. For each, the recommender 
 - TPOT = decode step(B) + B × prefill / output tokens. Every request's prefill is charged as extra time that doesn't overlap with decode, which is conservative.
 - `max_num_seqs` (the slots) = the largest B whose TPOT and idle TTFT (prefill + one decode step) meet the targets.
 - Queueing: requests arrive at random, so a burst can fill every slot and later requests wait. Each replica is modelled as a queue with `max_num_seqs` parallel slots (M/D/c). The service time is TTFT + output tokens × TPOT at full occupancy, and the waiting probability is Erlang C. The p90 wait is the M/M/c tail halved (Allen–Cunneen with deterministic service), because fixed-length requests take nearly constant time. Replicas are added until the **p90 TTFT** = TTFT + p90 wait meets the target.
+- Prefills also queue behind each other, because one GPU processes one prompt at a time. This is an M/D/1 queue whose service time is the TTFT at the busy batch; its p90 wait is added too.
 - Busy slots = the expected number of requests in flight, from Little's law. TPOT is reported at that batch.
 
 Why the queueing model is there: serve run 023 sized an L4 replica without it. With 15 slots at 81% average occupancy, the median TTFT was close to the prediction, but the p90 TTFT was 4.0 s against a predicted 0.23 s. The queueing model predicts 5.1 s for that run, slightly on the cautious side.
+
+Serve runs 024–028 then showed the p90 TTFT 2–3× above the slot-only model even without slot queueing, which is how the prefill queue was added. With it, across the six runs:
+- **TPOT:** within 3% of measured, and 18–21% high on the H100.
+- **p90 TTFT:** within 0–17% on H100, A100 and A10G. Still 40% low on the L4 (run 027), and well above measured where the slot model expects heavy queueing that didn't happen (run 026).
+- **p50 TTFT:** 12–64% low throughout.
 
 The cheapest $/hr wins; ties go to less quantization, then lower TPOT.
 
@@ -351,9 +357,9 @@ The cheapest $/hr wins; ties go to less quantization, then lower TPOT.
 
 | GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 | TPOT ms | KV cache tokens | Run |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| A100-40GB | bf16 | 1 | 2.10 | 0.091 | 0.455 | 29 (110) | 82 | 22.0 | 360,528 | 012-a100-40gb-vllm-bf16 |
-| A100-80GB | bf16 | 1 | 2.50 | 0.108 | 0.542 | 23 (117) | 79 | 17.6 | 1,045,408 | 013-a100-80gb-vllm-bf16 |
-| A100-80GB | awq-int4 | 1 | 2.50 | 0.108 | 0.542 | 16 (89) | 97 | 11.9 | 1,231,408 | 020-a100-80gb-vllm-awq-int4 |
+| A100-40GB | bf16 | 1 | 2.10 | 0.091 | 0.455 | 29 (110) | 181 | 22.0 | 360,528 | 012-a100-40gb-vllm-bf16 |
+| A100-80GB | bf16 | 1 | 2.50 | 0.108 | 0.542 | 23 (117) | 170 | 17.6 | 1,045,408 | 013-a100-80gb-vllm-bf16 |
+| A100-80GB | awq-int4 | 1 | 2.50 | 0.108 | 0.542 | 16 (89) | 248 | 11.9 | 1,231,408 | 020-a100-80gb-vllm-awq-int4 |
 
 Not feasible: L4 bf16 (misses SLO: TPOT 57.6 ms at batch 1).
 
@@ -361,9 +367,9 @@ Not feasible: L4 bf16 (misses SLO: TPOT 57.6 ms at batch 1).
 
 | GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 | TPOT ms | KV cache tokens | Run |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| H100 | bf16 | 2 | 7.90 | 0.048 | 0.429 | 42 (98) | 56 | 16.1 | 1,035,104 | 014-h100-vllm-bf16 |
-| H100 | fp8 | 2 | 7.90 | 0.048 | 0.429 | 23 (131) | 40 | 8.7 | 1,149,168 | 017-h100-vllm-fp8 |
-| H100 | awq-int4 | 2 | 7.90 | 0.048 | 0.429 | 38 (93) | 55 | 14.6 | 1,203,072 | 021-h100-vllm-awq-int4 |
+| H100 | bf16 | 2 | 7.90 | 0.048 | 0.429 | 42 (98) | 163 | 16.1 | 1,035,104 | 014-h100-vllm-bf16 |
+| H100 | fp8 | 2 | 7.90 | 0.048 | 0.429 | 23 (131) | 85 | 8.7 | 1,149,168 | 017-h100-vllm-fp8 |
+| H100 | awq-int4 | 2 | 7.90 | 0.048 | 0.429 | 38 (93) | 159 | 14.6 | 1,203,072 | 021-h100-vllm-awq-int4 |
 
 Not feasible: A10G bf16 (misses SLO: TTFT 446 ms at batch 1, TPOT 34.2 ms at batch 1); L4 bf16 (misses SLO: TTFT 563 ms at batch 1, TPOT 58.8 ms at batch 1); L4 fp8 (misses SLO: TTFT 438 ms at batch 1, TPOT 36.4 ms at batch 1); A10G awq-int4 (misses SLO: TTFT 465 ms at batch 1); L4 awq-int4 (misses SLO: TTFT 595 ms at batch 1).
 
@@ -371,9 +377,9 @@ Not feasible: A10G bf16 (misses SLO: TTFT 446 ms at batch 1, TPOT 34.2 ms at bat
 
 | GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 | TPOT ms | KV cache tokens | Run |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| H100 | bf16 | 2 | 7.90 | 0.043 | 0.086 | 222 (256) | 604 | 17.3 | 1,035,104 | 014-h100-vllm-bf16 |
-| H100 | fp8 | 2 | 7.90 | 0.043 | 0.086 | 124 (256) | 18 | 9.6 | 1,149,168 | 017-h100-vllm-fp8 |
-| A100-40GB | bf16 | 5 | 10.49 | 0.057 | 0.114 | 200 (256) | 821 | 38.9 | 360,528 | 012-a100-40gb-vllm-bf16 |
+| H100 | bf16 | 2 | 7.90 | 0.043 | 0.086 | 222 (256) | 663 | 17.3 | 1,035,104 | 014-h100-vllm-bf16 |
+| H100 | fp8 | 2 | 7.90 | 0.043 | 0.086 | 124 (256) | 40 | 9.6 | 1,149,168 | 017-h100-vllm-fp8 |
+| A100-40GB | bf16 | 5 | 10.49 | 0.057 | 0.114 | 200 (256) | 965 | 38.9 | 360,528 | 012-a100-40gb-vllm-bf16 |
 <!-- END GENERATED: recommend_examples -->
 
 ### Validation under real load
@@ -383,12 +389,12 @@ Each `serve` run starts `vllm serve` with the recommended `max_num_seqs` and dri
 <!-- BEGIN GENERATED: serve_validation -->
 | GPU | Quant | Load (prompt/output tokens, req/s) | max_num_seqs | TTFT ms p50: predicted / measured | TTFT ms p90: predicted / measured | TPOT ms p50: predicted / measured | Throughput req/s (achieved / offered) | Run |
 |---|---|---|---:|---|---|---|---|---|
-| L4 | fp8 | 1024/256, 1 | 15 | 228 / 342 | 5097 / 4003 | 47.6 / 48.1 | 0.93 / 1 | [023-l4-serve-fp8-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39226920677) |
-| H100 | bf16 | 2048/256, 10 | 98 | 56 / 85 | 56 / 163 | 16.1 / 13.3 | 9.84 / 10 | [025-h100-serve-bf16-longctx](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
-| A100-40GB | bf16 | 1024/256, 5 | 110 | 82 / 126 | 82 / 218 | 22.0 / 21.6 | 4.86 / 5 | [024-a100-40gb-serve-bf16-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
-| H100 | bf16 | 512/512, 25 | 256 | 25 / 69 | 604 / 93 | 17.3 / 14.7 | 24.08 / 25 | [026-h100-serve-bf16-offline](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
-| A10G | awq-int4 | 1024/256, 1.667 | 35 | 240 / 273 | 240 / 590 | 20.1 / 19.8 | 1.62 / 1.667 | [028-a10g-serve-awq-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
-| L4 | fp8 | 1024/256, 0.714 | 15 | 227 / 290 | 227 / 480 | 42.6 / 42.3 | 0.67 / 0.714 | [027-l4-serve-fp8-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
+| L4 | fp8 | 1024/256, 1 | 15 | 228 / 342 | 5219 / 4003 | 47.6 / 48.1 | 0.93 / 1 | [023-l4-serve-fp8-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39226920677) |
+| H100 | bf16 | 2048/256, 10 | 98 | 56 / 85 | 163 / 163 | 16.1 / 13.3 | 9.84 / 10 | [025-h100-serve-bf16-longctx](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
+| A100-40GB | bf16 | 1024/256, 5 | 110 | 82 / 126 | 181 / 218 | 22.0 / 21.6 | 4.86 / 5 | [024-a100-40gb-serve-bf16-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
+| H100 | bf16 | 512/512, 25 | 256 | 25 / 69 | 663 / 93 | 17.3 / 14.7 | 24.08 / 25 | [026-h100-serve-bf16-offline](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
+| A10G | awq-int4 | 1024/256, 1.667 | 35 | 240 / 273 | 517 / 590 | 20.1 / 19.8 | 1.62 / 1.667 | [028-a10g-serve-awq-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
+| L4 | fp8 | 1024/256, 0.714 | 15 | 227 / 290 | 292 / 480 | 42.6 / 42.3 | 0.67 / 0.714 | [027-l4-serve-fp8-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
 <!-- END GENERATED: serve_validation -->
 
 ## Development

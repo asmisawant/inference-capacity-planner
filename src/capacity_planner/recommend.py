@@ -16,8 +16,9 @@ Queueing: requests arrive at random (Poisson) and wait when all max_num_seqs slo
 are busy. Each replica is an M/D/c queue: c = max_num_seqs slots, service time
 S = TTFT + O * TPOT at full occupancy (near-deterministic for fixed-length requests).
 The waiting probability is Erlang C; the p90 wait uses the M/M/c tail scaled by
-Allen-Cunneen's (1 + Cs^2) / 2 with Cs^2 = 0. Replicas are added until
-p90 TTFT = TTFT + p90 wait meets the target. Calibrated by serve run 023, where a
+Allen-Cunneen's (1 + Cs^2) / 2 with Cs^2 = 0. Prefills also queue behind each
+other on the one GPU: an M/D/1 queue with service = TTFT. Replicas are added until
+p90 TTFT = TTFT + p90 slot wait + p90 prefill wait meets the target. Calibrated by serve run 023, where a
 replica sized without queueing (max_num_seqs 15, 81% of slots busy on average)
 measured a 4.0 s p90 TTFT against a 0.23 s prediction.
 """
@@ -74,12 +75,13 @@ class QueuePrediction:
     service_s: float  # TTFT + O * TPOT at full occupancy
     utilization: float  # mean busy slots / slots
     p_wait: float  # Erlang C: chance a request finds every slot busy
-    wait_p90_s: float
+    wait_p90_s: float  # waiting for a free slot
     busy: OperatingPoint  # at the expected number of busy slots
+    prefill_wait_p90_s: float = 0.0  # waiting behind other requests' prefills
 
     @property
     def ttft_p90_s(self) -> float:
-        return self.busy.ttft_s + self.wait_p90_s
+        return self.busy.ttft_s + self.wait_p90_s + self.prefill_wait_p90_s
 
 
 @dataclass(frozen=True)
@@ -178,9 +180,21 @@ def queue_prediction(c: MeasuredConfig, w: Workload, slots: int, rps: float) -> 
     if a >= slots:
         return None
     p_wait = erlang_c(slots, a)
+    wait_p90 = _p90_wait(p_wait, slots / service - rps)
+    busy = busy_point(c, w, slots, rps)
+    # Prefills share one GPU: an M/D/1 queue with service = TTFT at the busy batch.
+    rho = rps * busy.ttft_s
+    if rho >= 1:
+        return None
+    prefill_wait = _p90_wait(rho, 1 / busy.ttft_s - rps)
+    return QueuePrediction(slots, rps, service, a / slots, p_wait, wait_p90, busy, prefill_wait)
+
+
+def _p90_wait(p_wait: float, drain_rate: float) -> float:
+    """p90 of the wait: M/M/c tail P(W > t) = p_wait * exp(-drain_rate * t), scaled by
+    Allen-Cunneen's (1 + Cs^2) / 2 for near-deterministic service."""
     tail = max(0.0, math.log(p_wait / (1 - TTFT_PERCENTILE)))
-    wait_p90 = tail * (1 + SERVICE_CV2) / 2 / (slots / service - rps)
-    return QueuePrediction(slots, rps, service, a / slots, p_wait, wait_p90, busy_point(c, w, slots, rps))
+    return tail * (1 + SERVICE_CV2) / 2 / drain_rate
 
 
 def busy_point(c: MeasuredConfig, w: Workload, slots: int, rps: float) -> OperatingPoint:

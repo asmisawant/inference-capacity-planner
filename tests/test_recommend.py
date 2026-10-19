@@ -135,6 +135,10 @@ def test_queue_prediction_tail_and_stability(config):
     expected = max(0.0, math.log(c / 0.1)) * 0.5 / (4 / q.service_s - 0.5)
     assert q.wait_p90_s == pytest.approx(expected)
     assert q.utilization == pytest.approx(a / 4)
+    rho = 0.5 * q.busy.ttft_s
+    expected_prefill = max(0.0, math.log(rho / 0.1)) * 0.5 / (1 / q.busy.ttft_s - 0.5)
+    assert q.prefill_wait_p90_s == pytest.approx(expected_prefill)
+    assert q.ttft_p90_s == pytest.approx(q.busy.ttft_s + q.wait_p90_s + q.prefill_wait_p90_s)
     # Overloaded: offered load >= slots.
     assert rec.queue_prediction(config, w, 1, 10.0) is None
     # Light load: no wait at p90.

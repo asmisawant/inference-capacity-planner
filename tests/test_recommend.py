@@ -108,10 +108,10 @@ def test_evaluate_picks_largest_batch_within_slos_and_sizes_replicas_for_queuein
         assert rec.operating_point(config, w, r.max_num_seqs + 1).tpot_s > 0.02
     q = r.queue
     assert q.slots == r.max_num_seqs and q.rps == pytest.approx(100 / r.replicas)
-    assert q.ttft_p90_s <= 1
+    assert q.ttft_p90_s * r.ttft_margin <= 1
     # One fewer replica would miss the p90 target or be unstable.
     fewer = rec.queue_prediction(config, w, r.max_num_seqs, 100 / (r.replicas - 1)) if r.replicas > 1 else None
-    assert r.replicas == 1 or fewer is None or fewer.ttft_p90_s > 1
+    assert r.replicas == 1 or fewer is None or fewer.ttft_p90_s * r.ttft_margin > 1
     assert r.cost_per_hour == pytest.approx(r.replicas * GPUS["H100"].price_per_hour)
     tok_s = 100 * (1024 + 256)
     assert r.cost_per_million_tokens(w) == pytest.approx(r.cost_per_hour / 3600 / tok_s * 1e6)
@@ -125,24 +125,59 @@ def test_erlang_c_known_values():
         rec.erlang_c(2, 2.0)
 
 
-def test_queue_prediction_tail_and_stability(config):
+def test_queue_prediction_parameters(config):
     w = rec.Workload(1024, 256, rps=1, ttft_slo_s=1, tpot_slo_s=1)
     q = rec.queue_prediction(config, w, 4, 0.5)
-    full = rec.operating_point(config, w, 4)
-    assert q.service_s == pytest.approx(full.ttft_s + 256 * full.tpot_s)
+    busy = q.busy
+    assert busy == rec.busy_point(config, w, 4, 0.5)
+    assert q.service_s == pytest.approx(busy.ttft_s + 256 * busy.tpot_s)
     a = 0.5 * q.service_s
-    c = rec.erlang_c(4, a)
-    expected = max(0.0, math.log(c / 0.1)) * 0.5 / (4 / q.service_s - 0.5)
-    assert q.wait_p90_s == pytest.approx(expected)
     assert q.utilization == pytest.approx(a / 4)
-    rho = 0.5 * q.busy.ttft_s
-    expected_prefill = max(0.0, math.log(rho / 0.1)) * 0.5 / (1 / q.busy.ttft_s - 0.5)
-    assert q.prefill_wait_p90_s == pytest.approx(expected_prefill)
-    assert q.ttft_p90_s == pytest.approx(q.busy.ttft_s + q.wait_p90_s + q.prefill_wait_p90_s)
+    assert q.p_wait == pytest.approx(rec.erlang_c(4, a))
+    assert q.slot_rate == pytest.approx(2 * (4 / q.service_s - 0.5))
+    assert q.p_prefill == pytest.approx(0.5 * busy.ttft_s)
+    assert q.prefill_rate == pytest.approx(2 * (1 / busy.ttft_s - 0.5))
+    assert q.base_ttft_s == pytest.approx(busy.ttft_s + busy.decode_step_s / 2)
     # Overloaded: offered load >= slots.
     assert rec.queue_prediction(config, w, 1, 10.0) is None
-    # Light load: no wait at p90.
-    assert rec.queue_prediction(config, w, 64, 0.01).wait_p90_s == 0
+    # Light load: the p90 is just the base TTFT.
+    light = rec.queue_prediction(config, w, 64, 0.01)
+    assert light.ttft_p90_s == pytest.approx(light.base_ttft_s)
+
+
+def _q(p1, r1, p2, r2, base=0.1):
+    dummy = rec.OperatingPoint(1, 0.0, 0.0, 0.0, 1.0)
+    return rec.QueuePrediction(4, 1.0, 1.0, 0.5, p1, r1, p2, r2, dummy, base)
+
+
+def test_wait_survival_single_queue_is_mixed_exponential():
+    q = _q(0.4, 3.0, 0.0, 5.0)
+    for t in (0.0, 0.1, 1.0):
+        assert q.wait_survival(t) == pytest.approx(0.4 * math.exp(-3 * t))
+    # p90 = base + ln(p / 0.1) / rate
+    assert q.ttft_p90_s == pytest.approx(0.1 + math.log(4) / 3, rel=1e-6)
+    assert q.ttft_p50_s == pytest.approx(0.1)  # p < 0.5: median wait is 0
+
+
+def test_wait_survival_sum_matches_monte_carlo():
+    import random
+
+    q = _q(0.3, 2.0, 0.5, 7.0)
+    rng = random.Random(1)
+    n, t = 200_000, 0.4
+    hits = 0
+    for _ in range(n):
+        w = (rng.expovariate(2.0) if rng.random() < 0.3 else 0) + (rng.expovariate(7.0) if rng.random() < 0.5 else 0)
+        hits += w > t
+    assert q.wait_survival(t) == pytest.approx(hits / n, abs=0.005)
+    # Equal rates use the Erlang-2 limit, continuous with the general formula.
+    assert _q(0.3, 4.0, 0.5, 4.0).wait_survival(0.3) == pytest.approx(_q(0.3, 4.0, 0.5, 4.0 + 1e-6).wait_survival(0.3), rel=1e-4)
+
+
+def test_summing_waits_beats_summing_percentiles():
+    # Each wait alone happens 8% of the time (p90 of each is 0), together ~15%.
+    q = _q(0.08, 5.0, 0.08, 5.0)
+    assert q.ttft_p90_s > q.base_ttft_s
 
 
 def test_busy_point_is_littles_law_fixed_point(config):
@@ -169,14 +204,14 @@ def test_kv_cache_limits_batch():
 def test_tie_break_prefers_less_quantization():
     results = [micro_run(), vllm_run(quant="awq-int4"), vllm_run(quant="bf16")]
     w = rec.Workload(1024, 256, rps=1, ttft_slo_s=1, tpot_slo_s=1)
-    recs = rec.recommend(w, configs=cal.measured_configs(results))
+    recs = rec.recommend(w, configs=cal.measured_configs(results), margins=rec.Margins({}, ()))
     assert [r.quant for r in recs] == ["bf16", "awq-int4"]
     assert recs[0].cost_per_hour == recs[1].cost_per_hour
 
 
 def test_quant_filter(results):
     w = rec.Workload(1024, 256, rps=1, ttft_slo_s=1, tpot_slo_s=1)
-    assert rec.recommend(w, quants={"fp8"}, configs=cal.measured_configs(results)) == []
+    assert rec.recommend(w, quants={"fp8"}, configs=cal.measured_configs(results), margins=rec.Margins({}, ())) == []
 
 
 def test_predict_and_overload(config):
@@ -222,3 +257,32 @@ def test_serve_table(results):
     t = val.serve_table(results + [serve])
     assert "/ 40 |" in t and "/ 60 |" in t and "/ 7.0 |" in t and "4.90 / 5" in t
     assert val.serve_table(results) == val.NO_RESULTS
+
+
+def _serve_run(run_id, gpu, p90_ms):
+    return {
+        "id": run_id, "gpu": gpu, "suite": "serve", "quant": "bf16", "status": "ok",
+        "finished_at": "2026-10-19T01:00:00+00:00", "github_run_url": "u",
+        "serve": {"prompt": 1024, "output": 256, "rps": 1, "max_num_seqs": 64},
+        "result": {"serve": {"result": {"p90_ttft_ms": p90_ms, "median_ttft_ms": 1, "median_tpot_ms": 1,
+                                        "request_throughput": 1}}},
+    }
+
+
+def test_ttft_margins(results, config):
+    w = rec.Workload(1024, 256, rps=1, ttft_slo_s=1e9, tpot_slo_s=1e9)
+    pred_ms = rec.predict(config, w, 64).ttft_p90_s * 1e3
+    m = rec.ttft_margins(results + [_serve_run("s1", "H100", 1.5 * pred_ms), _serve_run("s2", "H100", 0.5 * pred_ms)])
+    assert m("H100") == pytest.approx(1.5)  # worst run
+    assert m("L4") == pytest.approx(1.5)  # no serve run: largest margin
+    low = rec.ttft_margins(results + [_serve_run("s3", "H100", 0.5 * pred_ms)])
+    assert low("H100") == 1.0  # never below 1
+    assert rec.ttft_margins(results).default == 1.0
+
+
+def test_margin_makes_recommendation_more_conservative(config):
+    w = rec.Workload(1024, 256, rps=50, ttft_slo_s=0.2, tpot_slo_s=0.05)
+    plain = rec.evaluate(config, w)
+    careful = rec.evaluate(config, w, ttft_margin=3.0)
+    assert careful.ttft_margin == 3.0
+    assert not careful.feasible or careful.replicas >= plain.replicas

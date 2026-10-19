@@ -97,6 +97,7 @@ SECTIONS = {
     "calibration_fits": lambda: calibration.fit_table(),
     "recommend_examples": lambda: recommend.examples_markdown(),
     "serve_validation": lambda: validation.serve_table(validation.load_results()),
+    "ttft_margins": lambda: validation.margin_table(validation.load_results()),
 }
 
 

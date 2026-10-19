@@ -181,7 +181,7 @@ def serve_table(results: list[dict]) -> str:
         w = Workload(s["prompt"], s["output"], s["rps"], ttft_slo_s=1e9, tpot_slo_s=1e9)
         c = configs.get((r["gpu"], r["quant"]))
         q = predict(c, w, s["max_num_seqs"]) if c else None
-        p50 = f"{q.busy.ttft_s * 1e3:.0f}" if q else "overloaded"
+        p50 = f"{q.ttft_p50_s * 1e3:.0f}" if q else "overloaded"
         p90 = f"{q.ttft_p90_s * 1e3:.0f}" if q else "overloaded"
         tpot = f"{q.busy.tpot_s * 1e3:.1f}" if q else "overloaded"
         rows.append(
@@ -190,4 +190,19 @@ def serve_table(results: list[dict]) -> str:
             f"| {tpot} / {res['median_tpot_ms']:.1f} "
             f"| {res['request_throughput']:.2f} / {s['rps']:g} | [{r['id']}]({r['github_run_url']}) |"
         )
+    return "\n".join(rows)
+
+
+def margin_table(results: list[dict]) -> str:
+    """The p90 TTFT safety factors the recommender applies, and the runs behind them."""
+    from .recommend import ttft_margins
+
+    m = ttft_margins(results)
+    if not m.ratios:
+        return NO_RESULTS
+    rows = ["| GPU | Measured / predicted p90 TTFT per serve run | Margin applied |", "|---|---|---:|"]
+    for gpu in GPUS:
+        runs = [f"{run_id} ×{ratio:.2f}" for run_id, g, ratio in m.ratios if g == gpu]
+        margin = m(gpu)
+        rows.append(f"| {gpu} | {', '.join(runs) if runs else '_no serve run: largest margin_'} | ×{margin:.2f} |")
     return "\n".join(rows)

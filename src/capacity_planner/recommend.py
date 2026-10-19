@@ -70,18 +70,51 @@ SERVICE_CV2 = 0.0  # squared coefficient of variation of service time: fixed-len
 
 @dataclass(frozen=True)
 class QueuePrediction:
+    """TTFT distribution of one replica: base + slot wait + prefill wait.
+
+    Each wait is 0 with probability 1 - p and exponential with the given rate otherwise
+    (the M/M/c tail, with the rate doubled per Allen-Cunneen for near-deterministic
+    service). The two waits are treated as independent and summed exactly.
+    """
+
     slots: int  # max_num_seqs
     rps: float  # per replica
-    service_s: float  # TTFT + O * TPOT at full occupancy
+    service_s: float  # TTFT + O * TPOT at the busy batch
     utilization: float  # mean busy slots / slots
     p_wait: float  # Erlang C: chance a request finds every slot busy
-    wait_p90_s: float  # waiting for a free slot
+    slot_rate: float
+    p_prefill: float  # chance a request arrives while another prefill is running
+    prefill_rate: float
     busy: OperatingPoint  # at the expected number of busy slots
-    prefill_wait_p90_s: float = 0.0  # waiting behind other requests' prefills
+    base_ttft_s: float  # busy TTFT + half a decode step (arrival waits for the running step)
+
+    def wait_survival(self, t: float) -> float:
+        """P(slot wait + prefill wait > t)."""
+        p1, r1, p2, r2 = self.p_wait, self.slot_rate, self.p_prefill, self.prefill_rate
+        if abs(r1 - r2) < 1e-9 * max(r1, r2):
+            both = (1 + r1 * t) * math.exp(-r1 * t)
+        else:  # hypoexponential survival
+            both = (r2 * math.exp(-r1 * t) - r1 * math.exp(-r2 * t)) / (r2 - r1)
+        return (p1 * (1 - p2) * math.exp(-r1 * t) + p2 * (1 - p1) * math.exp(-r2 * t) + p1 * p2 * both)
+
+    def ttft_quantile(self, q: float) -> float:
+        if self.wait_survival(0.0) <= 1 - q:
+            return self.base_ttft_s
+        lo, hi = 0.0, 1.0
+        while self.wait_survival(hi) > 1 - q:
+            hi *= 2
+        for _ in range(60):
+            mid = (lo + hi) / 2
+            lo, hi = (mid, hi) if self.wait_survival(mid) > 1 - q else (lo, mid)
+        return self.base_ttft_s + hi
+
+    @property
+    def ttft_p50_s(self) -> float:
+        return self.ttft_quantile(0.5)
 
     @property
     def ttft_p90_s(self) -> float:
-        return self.busy.ttft_s + self.wait_p90_s + self.prefill_wait_p90_s
+        return self.ttft_quantile(TTFT_PERCENTILE)
 
 
 @dataclass(frozen=True)
@@ -97,6 +130,7 @@ class Recommendation:
     price_per_hour: float = 0.0
     run_id: str = ""
     compile_fallback: bool = False
+    ttft_margin: float = 1.0  # p90 TTFT safety factor from serve runs (see ttft_margins)
 
     @property
     def operating(self) -> OperatingPoint | None:
@@ -134,8 +168,11 @@ def operating_point(c: MeasuredConfig, w: Workload, batch: int) -> OperatingPoin
     )
 
 
-def evaluate(c: MeasuredConfig, w: Workload) -> Recommendation:
+def evaluate(c: MeasuredConfig, w: Workload, ttft_margin: float = 1.0) -> Recommendation:
+    """Cheapest replica count for one config. The p90 TTFT must meet the target after
+    multiplying by `ttft_margin` (from serve runs, see ttft_margins)."""
     base = dict(
+        ttft_margin=ttft_margin,
         gpu=c.gpu.name,
         quant=c.quant.name,
         kv_cache_tokens=c.kv_cache_tokens,
@@ -167,34 +204,32 @@ def evaluate(c: MeasuredConfig, w: Workload) -> Recommendation:
     start = max(1, math.ceil(w.rps / ok[-1].capacity_rps))
     for replicas in range(start, start * 20 + 20):
         q = queue_prediction(c, w, slots, w.rps / replicas)
-        if q is not None and q.ttft_p90_s <= w.ttft_slo_s:
+        if q is not None and q.ttft_p90_s * ttft_margin <= w.ttft_slo_s:
             return Recommendation(feasible=True, replicas=replicas, max_num_seqs=slots, queue=q, **base)
     return Recommendation(feasible=False, reason="queueing keeps p90 TTFT above target", **base)
 
 
 def queue_prediction(c: MeasuredConfig, w: Workload, slots: int, rps: float) -> QueuePrediction | None:
     """One replica with `slots` = max_num_seqs at `rps`; None if it can't keep up."""
-    full = operating_point(c, w, slots)
-    service = full.ttft_s + w.output_len * full.tpot_s
-    a = rps * service
-    if a >= slots:
-        return None
-    p_wait = erlang_c(slots, a)
-    wait_p90 = _p90_wait(p_wait, slots / service - rps)
     busy = busy_point(c, w, slots, rps)
-    # Prefills share one GPU: an M/D/1 queue with service = TTFT at the busy batch.
-    rho = rps * busy.ttft_s
-    if rho >= 1:
+    service = busy.ttft_s + w.output_len * busy.tpot_s
+    a = rps * service
+    rho = rps * busy.ttft_s  # prefills share one GPU: M/D/1 with service = TTFT
+    if a >= slots or rho >= 1:
         return None
-    prefill_wait = _p90_wait(rho, 1 / busy.ttft_s - rps)
-    return QueuePrediction(slots, rps, service, a / slots, p_wait, wait_p90, busy, prefill_wait)
-
-
-def _p90_wait(p_wait: float, drain_rate: float) -> float:
-    """p90 of the wait: M/M/c tail P(W > t) = p_wait * exp(-drain_rate * t), scaled by
-    Allen-Cunneen's (1 + Cs^2) / 2 for near-deterministic service."""
-    tail = max(0.0, math.log(p_wait / (1 - TTFT_PERCENTILE)))
-    return tail * (1 + SERVICE_CV2) / 2 / drain_rate
+    acf = 2 / (1 + SERVICE_CV2)  # Allen-Cunneen: deterministic service halves the wait
+    return QueuePrediction(
+        slots=slots,
+        rps=rps,
+        service_s=service,
+        utilization=a / slots,
+        p_wait=erlang_c(slots, a),
+        slot_rate=acf * (slots / service - rps),
+        p_prefill=rho,
+        prefill_rate=acf * (1 / busy.ttft_s - rps),
+        busy=busy,
+        base_ttft_s=busy.ttft_s + busy.decode_step_s / 2,
+    )
 
 
 def busy_point(c: MeasuredConfig, w: Workload, slots: int, rps: float) -> OperatingPoint:
@@ -222,10 +257,55 @@ def predict(c: MeasuredConfig, w: Workload, max_num_seqs: int) -> QueuePredictio
     return queue_prediction(c, w, slots, w.rps) if slots >= 1 else None
 
 
-def recommend(w: Workload, quants: set[str] | None = None, configs: list[MeasuredConfig] | None = None) -> list[Recommendation]:
+@dataclass(frozen=True)
+class Margins:
+    """p90 TTFT safety factors: measured / predicted on serve runs, never below 1.
+
+    Per GPU from that GPU's serve runs; GPUs without any use the largest margin seen.
+    """
+
+    by_gpu: dict[str, float]
+    ratios: tuple[tuple[str, str, float], ...]  # (run id, gpu, measured / predicted)
+
+    @property
+    def default(self) -> float:
+        return max(self.by_gpu.values(), default=1.0)
+
+    def __call__(self, gpu: str) -> float:
+        return self.by_gpu.get(gpu, self.default)
+
+
+def ttft_margins(results: list[dict] | None = None, configs: list[MeasuredConfig] | None = None) -> Margins:
+    from .validation import load_results
+
+    results = load_results() if results is None else results
+    by_key = {c.key: c for c in (measured_configs(results) if configs is None else configs)}
+    ratios = []
+    for r in results:
+        if r["suite"] != "serve" or (r["gpu"], r["quant"]) not in by_key:
+            continue
+        s = r["serve"]
+        w = Workload(s["prompt"], s["output"], s["rps"], ttft_slo_s=1e9, tpot_slo_s=1e9)
+        q = predict(by_key[(r["gpu"], r["quant"])], w, s["max_num_seqs"])
+        if q is not None:
+            measured = r["result"]["serve"]["result"]["p90_ttft_ms"] / 1e3
+            ratios.append((r["id"], r["gpu"], measured / q.ttft_p90_s))
+    by_gpu: dict[str, float] = {}
+    for _, gpu, ratio in ratios:
+        by_gpu[gpu] = max(by_gpu.get(gpu, 1.0), ratio)
+    return Margins(by_gpu, tuple(ratios))
+
+
+def recommend(
+    w: Workload,
+    quants: set[str] | None = None,
+    configs: list[MeasuredConfig] | None = None,
+    margins: Margins | None = None,
+) -> list[Recommendation]:
     """All measured configs, feasible ones first, cheapest first."""
     configs = measured_configs() if configs is None else configs
-    recs = [evaluate(c, w) for c in configs if quants is None or c.quant.name in quants]
+    margins = ttft_margins(configs=configs) if margins is None else margins
+    recs = [evaluate(c, w, margins(c.gpu.name)) for c in configs if quants is None or c.quant.name in quants]
 
     def key(r: Recommendation):
         tpot = r.operating.tpot_s if r.operating else 0.0
@@ -236,7 +316,7 @@ def recommend(w: Workload, quants: set[str] | None = None, configs: list[Measure
 
 def table(w: Workload, recs: list[Recommendation], top: int | None = None) -> str:
     rows = [
-        "| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 | TPOT ms | KV cache tokens | Run |",
+        "| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |",
         "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     feasible = [r for r in recs if r.feasible]
@@ -246,7 +326,8 @@ def table(w: Workload, recs: list[Recommendation], top: int | None = None) -> st
         rows.append(
             f"| {r.gpu} | {r.quant}{note} | {r.replicas} | {r.cost_per_hour:.2f} "
             f"| {r.cost_per_million_tokens(w):.3f} | {r.cost_per_million_tokens(w, output_only=True):.3f} "
-            f"| {o.batch} ({r.max_num_seqs}) | {r.queue.ttft_p90_s * 1e3:.0f} | {o.tpot_s * 1e3:.1f} "
+            f"| {o.batch} ({r.max_num_seqs}) | {r.queue.ttft_p90_s * r.ttft_margin * 1e3:.0f} (×{r.ttft_margin:.2f}) "
+            f"| {o.tpot_s * 1e3:.1f} "
             f"| {r.kv_cache_tokens:,} | {r.run_id} |"
         )
     if not feasible:
@@ -270,9 +351,11 @@ EXAMPLES = (
 
 def examples_markdown(top: int = 3) -> str:
     configs = measured_configs()
+    margins = ttft_margins(configs=configs)
     parts = []
     for name, w in EXAMPLES:
-        parts.append(f"**{name}:** {describe(w)}.\n\n{table(w, recommend(w, configs=configs), top)}")
+        recs = recommend(w, configs=configs, margins=margins)
+        parts.append(f"**{name}:** {describe(w)}.\n\n{table(w, recs, top)}")
     return "\n\n".join(parts)
 
 

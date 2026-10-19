@@ -233,6 +233,71 @@
         "rps": 3.0,
         "max_num_seqs": 43
       }
+    },
+    {
+      "id": "032-l4-vllm-granite8b-bf16",
+      "gpu": "L4",
+      "suite": "vllm",
+      "quant": "bf16",
+      "model": "Granite-3.1-8B-Instruct"
+    },
+    {
+      "id": "033-l4-vllm-granite8b-fp8",
+      "gpu": "L4",
+      "suite": "vllm",
+      "quant": "fp8",
+      "model": "Granite-3.1-8B-Instruct"
+    },
+    {
+      "id": "034-a100-40gb-vllm-granite8b-bf16",
+      "gpu": "A100-40GB",
+      "suite": "vllm",
+      "quant": "bf16",
+      "model": "Granite-3.1-8B-Instruct"
+    },
+    {
+      "id": "035-h100-vllm-granite8b-bf16",
+      "gpu": "H100",
+      "suite": "vllm",
+      "quant": "bf16",
+      "model": "Granite-3.1-8B-Instruct"
+    },
+    {
+      "id": "036-h100-vllm-granite8b-fp8",
+      "gpu": "H100",
+      "suite": "vllm",
+      "quant": "fp8",
+      "model": "Granite-3.1-8B-Instruct"
+    },
+    {
+      "id": "037-h100-vllm-qwen32b-fp8",
+      "gpu": "H100",
+      "suite": "vllm",
+      "quant": "fp8",
+      "model": "Qwen2.5-32B-Instruct"
+    },
+    {
+      "id": "038-a100-80gb-vllm-qwen32b-awq-int4",
+      "gpu": "A100-80GB",
+      "suite": "vllm",
+      "quant": "awq-int4",
+      "model": "Qwen2.5-32B-Instruct"
+    },
+    {
+      "id": "039-h100x2-vllm-qwen32b-bf16",
+      "gpu": "H100",
+      "suite": "vllm",
+      "quant": "bf16",
+      "model": "Qwen2.5-32B-Instruct",
+      "tp": 2
+    },
+    {
+      "id": "040-a100-80gbx2-vllm-qwen32b-bf16",
+      "gpu": "A100-80GB",
+      "suite": "vllm",
+      "quant": "bf16",
+      "model": "Qwen2.5-32B-Instruct",
+      "tp": 2
     }
   ]
 }

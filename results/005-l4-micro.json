@@ -1,0 +1,79 @@
+{
+  "cost_usd_upper_bound": 0.006554992181265,
+  "finished_at": "2026-10-19T08:23:18+00:00",
+  "git_sha": "3e22cd86169f92917cb3e59b5d2fa2d024287d7a",
+  "github_run_url": "https://github.com/asmisawant/inference-capacity-planner/actions/runs/39222305725",
+  "gpu": "L4",
+  "gpu_call_s": 21.028726961000004,
+  "id": "005-l4-micro",
+  "modal_gpu": "L4",
+  "price_per_hour": 0.7992,
+  "quant": "bf16",
+  "reached_modal": true,
+  "result": {
+    "gpu_info": {
+      "clocks.max.memory": "6251",
+      "clocks.max.sm": "2040",
+      "driver_version": "610.57.04",
+      "memory.total": "23034",
+      "name": "NVIDIA L4",
+      "power.limit": "72.00"
+    },
+    "micro": {
+      "bandwidth": {
+        "best": 231.524850437304,
+        "best_ms": 9.275391578674316,
+        "bytes_per_iter": 2147483648,
+        "median": 230.40483730332676,
+        "median_ms": 9.32047986984253,
+        "unit": "GB/s"
+      },
+      "gemv_bandwidth": {
+        "best": 259.7092328595119,
+        "best_ms": 8.268799781799316,
+        "bytes_per_iter": 2147483648,
+        "median": 259.13158272990484,
+        "median_ms": 8.287232398986816,
+        "unit": "GB/s"
+      },
+      "matmul": {
+        "bf16": {
+          "best": 58.22263653313906,
+          "best_ms": 18.884607315063477,
+          "median": 52.675718244709444,
+          "median_ms": 20.873215675354004,
+          "n": 8192,
+          "unit": "TFLOPS"
+        },
+        "fp8": {
+          "best": 96.24792085384873,
+          "best_ms": 11.423744201660156,
+          "median": 91.80026522025199,
+          "median_ms": 11.977216243743896,
+          "n": 8192,
+          "unit": "TFLOPS"
+        },
+        "int8": {
+          "best": 129.6163515928154,
+          "best_ms": 8.482815742492676,
+          "median": 127.76557096335226,
+          "median_ms": 8.605695724487305,
+          "n": 8192,
+          "unit": "TFLOPS"
+        }
+      },
+      "torch_info": {
+        "compute_capability": "8.9",
+        "cuda_version": "13.0",
+        "sm_count": 58,
+        "torch_name": "NVIDIA L4",
+        "torch_version": "2.13.0+cu130",
+        "total_memory_bytes": 23689363456
+      }
+    }
+  },
+  "started_at": "2026-10-19T08:22:51+00:00",
+  "status": "ok",
+  "suite": "micro",
+  "wall_s": 26.842719824999996
+}

@@ -94,7 +94,7 @@ GPU runs are launched by GitHub Actions (`.github/workflows/bench.yml`) on [Moda
 - **Results:** each run is committed as `results/<id>.json` together with the tables below, which the workflow regenerates.
 
 Spend so far: <!-- BEGIN GENERATED: bench_spend -->
-10 runs (2 succeeded), at most **$0.23** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
+12 runs (4 succeeded), at most **$0.32** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
 <!-- END GENERATED: bench_spend -->
 
 ### Measured GPU throughput vs datasheet
@@ -102,7 +102,7 @@ Spend so far: <!-- BEGIN GENERATED: bench_spend -->
 <!-- BEGIN GENERATED: measured_gpu -->
 | GPU | Device (nvidia-smi) | Memory GiB (measured / spec) | GEMV read GB/s (% of datasheet) | Copy GB/s (%) | BF16 GEMM TFLOPS (%) | FP8 GEMM TFLOPS (%) | INT8 GEMM TOPS (%) | Run |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| L4 | NVIDIA L4 | 22.1 / 24 | – | 231 (77%) | 53 (44%) | 93 (38%) | 119 (49%) | [003-l4-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39220506641) |
+| L4 | NVIDIA L4 | 22.1 / 24 | 259 (86%) | 230 (77%) | 53 (44%) | 92 (38%) | 128 (53%) | [005-l4-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39222305725) |
 <!-- END GENERATED: measured_gpu -->
 
 ### vLLM memory: weights, KV cache and overhead
@@ -112,7 +112,7 @@ The roofline KV capacity assumes zero overhead. "Non-KV overhead" = GPU memory �
 <!-- BEGIN GENERATED: measured_vllm_memory -->
 | GPU | Quant | Weights GiB (vLLM / roofline) | KV cache GiB (vLLM) | Non-KV overhead GiB (derived) | KV tokens (vLLM / roofline) | Run |
 |---|---|---:|---:|---:|---:|---|
-| L4 | bf16 | 14.29 / 14.19 | 3.25 | 3.15 | 60,816 / 147,826 | [004-l4-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39220974066) |
+| L4 | bf16 | 14.29 / 14.19 | 3.25 | 3.15 | 60,816 / 147,826 | [006-l4-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39222305725) |
 <!-- END GENERATED: measured_vllm_memory -->
 
 ### TTFT: vLLM vs roofline
@@ -120,11 +120,11 @@ The roofline KV capacity assumes zero overhead. "Non-KV overhead" = GPU memory �
 <!-- BEGIN GENERATED: measured_ttft -->
 | GPU | Quant | Prompt tokens | TTFT ms (vLLM, median) | TTFT ms (roofline) | vLLM / roofline |
 |---|---|---:|---:|---:|---:|
-| L4 | bf16 | 128 | 71.1 | 50.8 | 1.40 |
-| L4 | bf16 | 512 | 148.0 | 55.7 | 2.66 |
-| L4 | bf16 | 1024 | 263.7 | 112.2 | 2.35 |
-| L4 | bf16 | 2048 | 522.2 | 227.9 | 2.29 |
-| L4 | bf16 | 4000 | 1074.2 | 458.0 | 2.35 |
+| L4 | bf16 | 128 | 71.3 | 50.8 | 1.40 |
+| L4 | bf16 | 512 | 143.7 | 55.7 | 2.58 |
+| L4 | bf16 | 1024 | 257.2 | 112.2 | 2.29 |
+| L4 | bf16 | 2048 | 505.7 | 227.9 | 2.22 |
+| L4 | bf16 | 4000 | 1034.3 | 458.0 | 2.26 |
 <!-- END GENERATED: measured_ttft -->
 
 ### Decode: vLLM vs roofline
@@ -134,13 +134,13 @@ Each batch of 512-token prompts runs twice, with 64 and with 192 output tokens. 
 <!-- BEGIN GENERATED: measured_decode -->
 | GPU | Quant | Batch | Decode step ms (vLLM) | Decode step ms (roofline) | vLLM / roofline | Decode tok/s (vLLM) | $/1M output tokens | TPOT ms under load (median) |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
-| L4 | bf16 | 1 | – | 50.88 | – | – | – | 56.47 |
-| L4 | bf16 | 2 | – | 50.99 | – | – | – | 58.19 |
-| L4 | bf16 | 4 | – | 51.21 | – | – | – | 58.05 |
-| L4 | bf16 | 8 | – | 51.65 | – | – | – | 58.91 |
-| L4 | bf16 | 16 | – | 52.54 | – | – | – | 60.54 |
-| L4 | bf16 | 32 | – | 54.30 | – | – | – | 74.96 |
-| L4 | bf16 | 64 | – | 57.83 | – | – | – | 98.33 |
+| L4 | bf16 | 1 | 56.51 | 50.89 | 1.11 | 18 | 12.545 | 56.47 |
+| L4 | bf16 | 2 | 57.66 | 51.02 | 1.13 | 35 | 6.400 | 57.93 |
+| L4 | bf16 | 4 | 58.07 | 51.26 | 1.13 | 69 | 3.223 | 58.05 |
+| L4 | bf16 | 8 | 59.03 | 51.75 | 1.14 | 136 | 1.638 | 58.97 |
+| L4 | bf16 | 16 | 60.86 | 52.73 | 1.15 | 263 | 0.844 | 60.65 |
+| L4 | bf16 | 32 | 67.37 | 54.69 | 1.23 | 475 | 0.467 | 76.59 |
+| L4 | bf16 | 64 | 75.03 | 58.61 | 1.28 | 853 | 0.260 | 89.36 |
 <!-- END GENERATED: measured_decode -->
 
 ## Development

@@ -94,7 +94,7 @@ GPU runs are launched by GitHub Actions (`.github/workflows/bench.yml`) on [Moda
 - **Results:** each run is committed as `results/<id>.json` together with the tables below, which the workflow regenerates.
 
 Spend so far: <!-- BEGIN GENERATED: bench_spend -->
-32 runs (19 succeeded), at most **$2.16** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
+37 runs (24 succeeded), at most **$3.35** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
 <!-- END GENERATED: bench_spend -->
 
 Configurations that did not run: **FP8 on A100-80GB** fails at vLLM 0.30.0 engine startup twice, in two different places: in torch.compile (run 016, `InductorError: auto_functionalized was not removed`) and, with the eager compile backend, in the CUTLASS FP8 GEMM (run 022, `cutlass_scaled_mm_sm80_epilogue`). The A100 has no FP8 tensor cores, so this is vLLM's weight-only FP8 path. Not retried.
@@ -384,6 +384,11 @@ Each `serve` run starts `vllm serve` with the recommended `max_num_seqs` and dri
 | GPU | Quant | Load (prompt/output tokens, req/s) | max_num_seqs | TTFT ms p50: predicted / measured | TTFT ms p90: predicted / measured | TPOT ms p50: predicted / measured | Throughput req/s (achieved / offered) | Run |
 |---|---|---|---:|---|---|---|---|---|
 | L4 | fp8 | 1024/256, 1 | 15 | 228 / 342 | 5097 / 4003 | 47.6 / 48.1 | 0.93 / 1 | [023-l4-serve-fp8-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39226920677) |
+| H100 | bf16 | 2048/256, 10 | 98 | 56 / 85 | 56 / 163 | 16.1 / 13.3 | 9.84 / 10 | [025-h100-serve-bf16-longctx](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
+| A100-40GB | bf16 | 1024/256, 5 | 110 | 82 / 126 | 82 / 218 | 22.0 / 21.6 | 4.86 / 5 | [024-a100-40gb-serve-bf16-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
+| H100 | bf16 | 512/512, 25 | 256 | 25 / 69 | 604 / 93 | 17.3 / 14.7 | 24.08 / 25 | [026-h100-serve-bf16-offline](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
+| A10G | awq-int4 | 1024/256, 1.667 | 35 | 240 / 273 | 240 / 590 | 20.1 / 19.8 | 1.62 / 1.667 | [028-a10g-serve-awq-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
+| L4 | fp8 | 1024/256, 0.714 | 15 | 227 / 290 | 227 / 480 | 42.6 / 42.3 | 0.67 / 0.714 | [027-l4-serve-fp8-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39228376358) |
 <!-- END GENERATED: serve_validation -->
 
 ## Development

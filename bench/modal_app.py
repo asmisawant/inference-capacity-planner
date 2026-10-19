@@ -15,15 +15,23 @@ import tempfile
 
 import modal
 
-VLLM_VERSION = "0.30.0"
 HF_CACHE = "/root/.cache/huggingface"
 
 app = modal.App("inference-capacity-planner-bench")
 hf_volume = modal.Volume.from_name("icp-hf-cache", create_if_missing=True)
 
+# vLLM's official image for the pinned release, pinned by its linux/amd64 digest
+# (Docker Hub vllm/vllm-openai:v0.30.0, pushed 2026-09-22). It ships the CUDA
+# toolkit that FlashInfer's JIT kernels need; a plain `pip install vllm` on a
+# slim base fails at engine warmup with "Could not find nvcc".
+VLLM_IMAGE = (
+    "vllm/vllm-openai@sha256:5f5e535216848d0c52159c8c13a0af04be5f6fe1a84e79914300610796f76d40"
+)
+
 image = (
-    modal.Image.debian_slim(python_version="3.12")
-    .uv_pip_install(f"vllm=={VLLM_VERSION}")
+    modal.Image.from_registry(VLLM_IMAGE)
+    .entrypoint([])  # the image's entrypoint starts `vllm serve`
+    .run_commands('command -v python || ln -s "$(command -v python3)" /usr/local/bin/python')
     .env({"HF_HOME": HF_CACHE, "HF_XET_HIGH_PERFORMANCE": "1"})
     .add_local_python_source("bench", "capacity_planner")
 )

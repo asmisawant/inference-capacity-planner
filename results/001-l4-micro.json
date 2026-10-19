@@ -1,0 +1,16 @@
+{
+  "cost_usd_upper_bound": 6.45652243236007e-05,
+  "error": "AuthError: Token validation failed",
+  "finished_at": "2026-10-19T03:02:14+00:00",
+  "git_sha": "1350407d58e6c928504026d4ce2bab4bfc390917",
+  "github_run_url": "https://github.com/asmisawant/inference-capacity-planner/actions/runs/39192719638",
+  "gpu": "L4",
+  "id": "001-l4-micro",
+  "modal_gpu": "L4",
+  "price_per_hour": 0.7992,
+  "quant": "bf16",
+  "started_at": "2026-10-19T03:02:14+00:00",
+  "status": "error",
+  "suite": "micro",
+  "wall_s": 0.26439485800000284
+}

@@ -172,21 +172,22 @@ def serve_table(results: list[dict]) -> str:
         return NO_RESULTS
     configs = {c.key: c for c in measured_configs(results)}
     rows = [
-        "| GPU | Quant | Load (prompt/output tokens, req/s) | max_num_seqs | TTFT ms predicted / measured p50 (p90) | TPOT ms predicted / measured p50 (p90) | Throughput req/s (achieved / offered) | Run |",
-        "|---|---|---|---:|---|---|---|---|",
+        "| GPU | Quant | Load (prompt/output tokens, req/s) | max_num_seqs | TTFT ms p50: predicted / measured | TTFT ms p90: predicted / measured | TPOT ms p50: predicted / measured | Throughput req/s (achieved / offered) | Run |",
+        "|---|---|---|---:|---|---|---|---|---|",
     ]
     for r in runs:
         s = r["serve"]
         res = r["result"]["serve"]["result"]
         w = Workload(s["prompt"], s["output"], s["rps"], ttft_slo_s=1e9, tpot_slo_s=1e9)
         c = configs.get((r["gpu"], r["quant"]))
-        p = predict(c, w, s["max_num_seqs"]) if c else None
-        pt = f"{p.ttft_s * 1e3:.0f}" if p else "overloaded"
-        pp = f"{p.tpot_s * 1e3:.1f}" if p else "overloaded"
+        q = predict(c, w, s["max_num_seqs"]) if c else None
+        p50 = f"{q.busy.ttft_s * 1e3:.0f}" if q else "overloaded"
+        p90 = f"{q.ttft_p90_s * 1e3:.0f}" if q else "overloaded"
+        tpot = f"{q.busy.tpot_s * 1e3:.1f}" if q else "overloaded"
         rows.append(
             f"| {r['gpu']} | {r['quant']} | {s['prompt']}/{s['output']}, {s['rps']:g} | {s['max_num_seqs']} "
-            f"| {pt} / {res['median_ttft_ms']:.0f} ({res['p90_ttft_ms']:.0f}) "
-            f"| {pp} / {res['median_tpot_ms']:.1f} ({res['p90_tpot_ms']:.1f}) "
+            f"| {p50} / {res['median_ttft_ms']:.0f} | {p90} / {res['p90_ttft_ms']:.0f} "
+            f"| {tpot} / {res['median_tpot_ms']:.1f} "
             f"| {res['request_throughput']:.2f} / {s['rps']:g} | [{r['id']}]({r['github_run_url']}) |"
         )
     return "\n".join(rows)

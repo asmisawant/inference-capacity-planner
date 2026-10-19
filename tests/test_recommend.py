@@ -99,20 +99,52 @@ def test_operating_point_formulas(config):
     assert p.capacity_rps == pytest.approx(64 / (256 * p.tpot_s))
 
 
-def test_evaluate_picks_largest_batch_within_slos_and_sizes_replicas(config):
+def test_evaluate_picks_largest_batch_within_slos_and_sizes_replicas_for_queueing(config):
     w = rec.Workload(1024, 256, rps=100, ttft_slo_s=1, tpot_slo_s=0.02)
     r = rec.evaluate(config, w)
     assert r.feasible
-    best = rec.operating_point(config, w, r.max_num_seqs)
-    assert best.tpot_s <= 0.02
+    assert rec.operating_point(config, w, r.max_num_seqs).tpot_s <= 0.02
     if r.max_num_seqs < 256:
         assert rec.operating_point(config, w, r.max_num_seqs + 1).tpot_s > 0.02
-    assert r.replicas == math.ceil(100 / best.capacity_rps)
-    # Expected batch is the smallest that keeps up with the per-replica rate.
-    assert r.operating.capacity_rps >= 100 / r.replicas
+    q = r.queue
+    assert q.slots == r.max_num_seqs and q.rps == pytest.approx(100 / r.replicas)
+    assert q.ttft_p90_s <= 1
+    # One fewer replica would miss the p90 target or be unstable.
+    fewer = rec.queue_prediction(config, w, r.max_num_seqs, 100 / (r.replicas - 1)) if r.replicas > 1 else None
+    assert r.replicas == 1 or fewer is None or fewer.ttft_p90_s > 1
     assert r.cost_per_hour == pytest.approx(r.replicas * GPUS["H100"].price_per_hour)
     tok_s = 100 * (1024 + 256)
     assert r.cost_per_million_tokens(w) == pytest.approx(r.cost_per_hour / 3600 / tok_s * 1e6)
+
+
+def test_erlang_c_known_values():
+    assert rec.erlang_c(1, 0.5) == pytest.approx(0.5)  # M/M/1: P(wait) = rho
+    assert rec.erlang_c(2, 1.0) == pytest.approx(1 / 3)
+    assert rec.erlang_c(10, 0.001) < 1e-10
+    with pytest.raises(ValueError):
+        rec.erlang_c(2, 2.0)
+
+
+def test_queue_prediction_tail_and_stability(config):
+    w = rec.Workload(1024, 256, rps=1, ttft_slo_s=1, tpot_slo_s=1)
+    q = rec.queue_prediction(config, w, 4, 0.5)
+    full = rec.operating_point(config, w, 4)
+    assert q.service_s == pytest.approx(full.ttft_s + 256 * full.tpot_s)
+    a = 0.5 * q.service_s
+    c = rec.erlang_c(4, a)
+    expected = max(0.0, math.log(c / 0.1)) * 0.5 / (4 / q.service_s - 0.5)
+    assert q.wait_p90_s == pytest.approx(expected)
+    assert q.utilization == pytest.approx(a / 4)
+    # Overloaded: offered load >= slots.
+    assert rec.queue_prediction(config, w, 1, 10.0) is None
+    # Light load: no wait at p90.
+    assert rec.queue_prediction(config, w, 64, 0.01).wait_p90_s == 0
+
+
+def test_busy_point_is_littles_law_fixed_point(config):
+    w = rec.Workload(1024, 256, rps=2, ttft_slo_s=1, tpot_slo_s=1)
+    p = rec.busy_point(config, w, 256, 2)
+    assert p.batch == max(1, math.ceil(2 * (p.ttft_s + 256 * p.tpot_s)))
 
 
 def test_infeasible_reasons(config):
@@ -145,8 +177,8 @@ def test_quant_filter(results):
 
 def test_predict_and_overload(config):
     w = rec.Workload(1024, 256, rps=1, ttft_slo_s=1, tpot_slo_s=1)
-    p = rec.predict(config, w, 256)
-    assert p.capacity_rps >= 1
+    q = rec.predict(config, w, 256)
+    assert q.slots == 256 and q.utilization < 1
     assert rec.predict(config, rec.Workload(1024, 256, rps=1e6, ttft_slo_s=1, tpot_slo_s=1), 256) is None
 
 
@@ -184,5 +216,5 @@ def test_serve_table(results):
         }}},
     }
     t = val.serve_table(results + [serve])
-    assert "/ 40 (60)" in t and "/ 7.0 (8.0)" in t and "4.90 / 5" in t
+    assert "/ 40 |" in t and "/ 60 |" in t and "/ 7.0 |" in t and "4.90 / 5" in t
     assert val.serve_table(results) == val.NO_RESULTS

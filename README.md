@@ -338,39 +338,42 @@ With those efficiencies, the remaining gap to vLLM is fitted per configuration a
 Only (GPU, quant) pairs that vLLM ran are considered. For each, the recommender uses the measured curves: idle TTFT over prompt length, and the decode step over batch size. The calibrated roofline supplies only the shape outside them: prompt lengths outside 128–4,000 tokens, and contexts other than the measured 640 tokens. Per replica with B requests in flight:
 
 - TPOT = decode step(B) + B × prefill / output tokens. Every request's prefill is charged as extra time that doesn't overlap with decode, which is conservative.
-- TTFT under load = prefill + one decode step. Queueing beyond that is not modelled.
-- Capacity = B / (output tokens × TPOT) requests/s.
+- `max_num_seqs` (the slots) = the largest B whose TPOT and idle TTFT (prefill + one decode step) meet the targets.
+- Queueing: requests arrive at random, so a burst can fill every slot and later requests wait. Each replica is modelled as a queue with `max_num_seqs` parallel slots (M/D/c). The service time is TTFT + output tokens × TPOT at full occupancy, and the waiting probability is Erlang C. The p90 wait is the M/M/c tail halved (Allen–Cunneen with deterministic service), because fixed-length requests take nearly constant time. Replicas are added until the **p90 TTFT** = TTFT + p90 wait meets the target.
+- Busy slots = the expected number of requests in flight, from Little's law. TPOT is reported at that batch.
 
-The largest B within the KV cache and both latency targets sets each replica's capacity. Replicas = ⌈traffic / capacity⌉, and the cheapest $/hr wins. Ties go to less quantization, then lower TPOT. "Batch per replica" is the expected number in flight at this traffic; the number in parentheses is the `max_num_seqs` to configure.
+Why the queueing model is there: serve run 023 sized an L4 replica without it. With 15 slots at 81% average occupancy, the median TTFT was close to the prediction, but the p90 TTFT was 4.0 s against a predicted 0.23 s. The queueing model predicts 5.1 s for that run, slightly on the cautious side.
+
+The cheapest $/hr wins; ties go to less quantization, then lower TPOT.
 
 <!-- BEGIN GENERATED: recommend_examples -->
 **Chat assistant:** 1024-token prompts, 256-token outputs, 5 requests/s, TTFT ≤ 500 ms, TPOT ≤ 50 ms.
 
-| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Batch per replica (max_num_seqs) | TTFT ms | TPOT ms | KV cache tokens | Run |
+| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 | TPOT ms | KV cache tokens | Run |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| A100-40GB | bf16 | 1 | 2.10 | 0.091 | 0.455 | 28 (110) | 82 | 21.7 | 360,528 | 012-a100-40gb-vllm-bf16 |
-| A10G | awq-int4 | 2 | 2.20 | 0.095 | 0.477 | 22 (35) | 243 | 34.3 | 246,480 | 019-a10g-vllm-awq-int4 |
-| L4 | awq-int4 | 3 | 2.40 | 0.104 | 0.520 | 21 (21) | 313 | 49.1 | 246,528 | 018-l4-vllm-awq-int4 |
+| A100-40GB | bf16 | 1 | 2.10 | 0.091 | 0.455 | 29 (110) | 82 | 22.0 | 360,528 | 012-a100-40gb-vllm-bf16 |
+| A100-80GB | bf16 | 1 | 2.50 | 0.108 | 0.542 | 23 (117) | 79 | 17.6 | 1,045,408 | 013-a100-80gb-vllm-bf16 |
+| A100-80GB | awq-int4 | 1 | 2.50 | 0.108 | 0.542 | 16 (89) | 97 | 11.9 | 1,231,408 | 020-a100-80gb-vllm-awq-int4 |
 
 Not feasible: L4 bf16 (misses SLO: TPOT 57.6 ms at batch 1).
 
 **Long-context interactive:** 2048-token prompts, 256-token outputs, 20 requests/s, TTFT ≤ 300 ms, TPOT ≤ 30 ms.
 
-| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Batch per replica (max_num_seqs) | TTFT ms | TPOT ms | KV cache tokens | Run |
+| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 | TPOT ms | KV cache tokens | Run |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| H100 | bf16 | 2 | 7.90 | 0.048 | 0.429 | 41 (98) | 56 | 15.9 | 1,035,104 | 014-h100-vllm-bf16 |
-| H100 | fp8 | 2 | 7.90 | 0.048 | 0.429 | 22 (131) | 39 | 8.5 | 1,149,168 | 017-h100-vllm-fp8 |
-| H100 | awq-int4 | 2 | 7.90 | 0.048 | 0.429 | 36 (93) | 55 | 14.0 | 1,203,072 | 021-h100-vllm-awq-int4 |
+| H100 | bf16 | 2 | 7.90 | 0.048 | 0.429 | 42 (98) | 56 | 16.1 | 1,035,104 | 014-h100-vllm-bf16 |
+| H100 | fp8 | 2 | 7.90 | 0.048 | 0.429 | 23 (131) | 40 | 8.7 | 1,149,168 | 017-h100-vllm-fp8 |
+| H100 | awq-int4 | 2 | 7.90 | 0.048 | 0.429 | 38 (93) | 55 | 14.6 | 1,203,072 | 021-h100-vllm-awq-int4 |
 
 Not feasible: A10G bf16 (misses SLO: TTFT 446 ms at batch 1, TPOT 34.2 ms at batch 1); L4 bf16 (misses SLO: TTFT 563 ms at batch 1, TPOT 58.8 ms at batch 1); L4 fp8 (misses SLO: TTFT 438 ms at batch 1, TPOT 36.4 ms at batch 1); A10G awq-int4 (misses SLO: TTFT 465 ms at batch 1); L4 awq-int4 (misses SLO: TTFT 595 ms at batch 1).
 
 **Offline batch generation:** 512-token prompts, 512-token outputs, 50 requests/s, TTFT ≤ 5000 ms, TPOT ≤ 200 ms.
 
-| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Batch per replica (max_num_seqs) | TTFT ms | TPOT ms | KV cache tokens | Run |
+| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 | TPOT ms | KV cache tokens | Run |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| H100 | bf16 | 2 | 7.90 | 0.043 | 0.086 | 220 (256) | 25 | 17.2 | 1,035,104 | 014-h100-vllm-bf16 |
-| H100 | fp8 | 2 | 7.90 | 0.043 | 0.086 | 123 (256) | 17 | 9.6 | 1,149,168 | 017-h100-vllm-fp8 |
-| A100-40GB | bf16 | 5 | 10.49 | 0.057 | 0.114 | 197 (256) | 61 | 38.5 | 360,528 | 012-a100-40gb-vllm-bf16 |
+| H100 | bf16 | 2 | 7.90 | 0.043 | 0.086 | 222 (256) | 604 | 17.3 | 1,035,104 | 014-h100-vllm-bf16 |
+| H100 | fp8 | 2 | 7.90 | 0.043 | 0.086 | 124 (256) | 18 | 9.6 | 1,149,168 | 017-h100-vllm-fp8 |
+| A100-40GB | bf16 | 5 | 10.49 | 0.057 | 0.114 | 200 (256) | 821 | 38.9 | 360,528 | 012-a100-40gb-vllm-bf16 |
 <!-- END GENERATED: recommend_examples -->
 
 ### Validation under real load
@@ -378,9 +381,9 @@ Not feasible: A10G bf16 (misses SLO: TTFT 446 ms at batch 1, TPOT 34.2 ms at bat
 Each `serve` run starts `vllm serve` with the recommended `max_num_seqs` and drives one replica with `vllm bench serve`: Poisson arrivals at the per-replica rate, random prompts of fixed length, `--ignore-eos`, and a 2-minute measured window after a warm-up. Predictions come from the current calibration.
 
 <!-- BEGIN GENERATED: serve_validation -->
-| GPU | Quant | Load (prompt/output tokens, req/s) | max_num_seqs | TTFT ms predicted / measured p50 (p90) | TPOT ms predicted / measured p50 (p90) | Throughput req/s (achieved / offered) | Run |
-|---|---|---|---:|---|---|---|---|
-| L4 | fp8 | 1024/256, 1 | 15 | 228 / 342 (4003) | 46.6 / 48.1 (49.3) | 0.93 / 1 | [023-l4-serve-fp8-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39226920677) |
+| GPU | Quant | Load (prompt/output tokens, req/s) | max_num_seqs | TTFT ms p50: predicted / measured | TTFT ms p90: predicted / measured | TPOT ms p50: predicted / measured | Throughput req/s (achieved / offered) | Run |
+|---|---|---|---:|---|---|---|---|---|
+| L4 | fp8 | 1024/256, 1 | 15 | 228 / 342 | 5097 / 4003 | 47.6 / 48.1 | 0.93 / 1 | [023-l4-serve-fp8-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39226920677) |
 <!-- END GENERATED: serve_validation -->
 
 ## Development

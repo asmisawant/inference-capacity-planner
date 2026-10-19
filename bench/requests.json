@@ -137,6 +137,66 @@
         "rps": 1.0,
         "max_num_seqs": 15
       }
+    },
+    {
+      "id": "024-a100-40gb-serve-bf16-chat",
+      "gpu": "A100-40GB",
+      "suite": "serve",
+      "quant": "bf16",
+      "serve": {
+        "prompt": 1024,
+        "output": 256,
+        "rps": 5.0,
+        "max_num_seqs": 110
+      }
+    },
+    {
+      "id": "025-h100-serve-bf16-longctx",
+      "gpu": "H100",
+      "suite": "serve",
+      "quant": "bf16",
+      "serve": {
+        "prompt": 2048,
+        "output": 256,
+        "rps": 10.0,
+        "max_num_seqs": 98
+      }
+    },
+    {
+      "id": "026-h100-serve-bf16-offline",
+      "gpu": "H100",
+      "suite": "serve",
+      "quant": "bf16",
+      "serve": {
+        "prompt": 512,
+        "output": 512,
+        "rps": 25.0,
+        "max_num_seqs": 256
+      }
+    },
+    {
+      "id": "027-l4-serve-fp8-chat",
+      "gpu": "L4",
+      "suite": "serve",
+      "quant": "fp8",
+      "serve": {
+        "prompt": 1024,
+        "output": 256,
+        "rps": 0.714,
+        "max_num_seqs": 15
+      }
+    },
+    {
+      "id": "028-a10g-serve-awq-chat",
+      "gpu": "A10G",
+      "suite": "serve",
+      "quant": "awq-int4",
+      "serve": {
+        "prompt": 1024,
+        "output": 256,
+        "rps": 1.667,
+        "max_num_seqs": 35
+      }
     }
   ]
 }

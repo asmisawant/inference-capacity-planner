@@ -9,11 +9,17 @@ Serving model, per replica with B requests in flight (vLLM continuous batching):
 - each decode step takes step(B, context) and gives every request one token;
 - each request's prefill takes prefill(P) of GPU time, the idle-engine TTFT, and is
   assumed not to overlap with decode (conservative);
-- so a request sees one token per  TPOT = step + B * prefill / O,
-  and the replica serves  capacity(B) = B / (O * TPOT)  requests/s (Little's law);
-- TTFT under load = prefill + one decode step (chunked prefill joins the next step;
-  queueing beyond that is not modelled).
-Replicas = ceil(rps / capacity at the largest batch meeting both SLOs).
+- so a request sees one token per  TPOT = step + B * prefill / O;
+- max_num_seqs = the largest B whose TPOT and idle TTFT (prefill + one step) meet the
+  targets: the replica's slots.
+Queueing: requests arrive at random (Poisson) and wait when all max_num_seqs slots
+are busy. Each replica is an M/D/c queue: c = max_num_seqs slots, service time
+S = TTFT + O * TPOT at full occupancy (near-deterministic for fixed-length requests).
+The waiting probability is Erlang C; the p90 wait uses the M/M/c tail scaled by
+Allen-Cunneen's (1 + Cs^2) / 2 with Cs^2 = 0. Replicas are added until
+p90 TTFT = TTFT + p90 wait meets the target. Calibrated by serve run 023, where a
+replica sized without queueing (max_num_seqs 15, 81% of slots busy on average)
+measured a 4.0 s p90 TTFT against a 0.23 s prediction.
 """
 
 from __future__ import annotations
@@ -57,6 +63,25 @@ class OperatingPoint:
     capacity_rps: float
 
 
+TTFT_PERCENTILE = 0.90
+SERVICE_CV2 = 0.0  # squared coefficient of variation of service time: fixed-length requests
+
+
+@dataclass(frozen=True)
+class QueuePrediction:
+    slots: int  # max_num_seqs
+    rps: float  # per replica
+    service_s: float  # TTFT + O * TPOT at full occupancy
+    utilization: float  # mean busy slots / slots
+    p_wait: float  # Erlang C: chance a request finds every slot busy
+    wait_p90_s: float
+    busy: OperatingPoint  # at the expected number of busy slots
+
+    @property
+    def ttft_p90_s(self) -> float:
+        return self.busy.ttft_s + self.wait_p90_s
+
+
 @dataclass(frozen=True)
 class Recommendation:
     gpu: str
@@ -64,12 +89,16 @@ class Recommendation:
     feasible: bool
     reason: str = ""
     replicas: int = 0
-    max_num_seqs: int = 0  # largest batch that still meets both SLOs
-    operating: OperatingPoint | None = None  # expected batch per replica at this traffic
+    max_num_seqs: int = 0  # largest batch whose TPOT and idle TTFT meet the targets
+    queue: QueuePrediction | None = None
     kv_cache_tokens: int = 0
     price_per_hour: float = 0.0
     run_id: str = ""
     compile_fallback: bool = False
+
+    @property
+    def operating(self) -> OperatingPoint | None:
+        return self.queue.busy if self.queue else None
 
     @property
     def cost_per_hour(self) -> float:
@@ -78,6 +107,16 @@ class Recommendation:
     def cost_per_million_tokens(self, w: Workload, output_only: bool = False) -> float:
         tokens_per_s = w.rps * (w.output_len if output_only else w.prompt_len + w.output_len)
         return self.cost_per_hour / 3600 / tokens_per_s * 1e6
+
+
+def erlang_c(c: int, a: float) -> float:
+    """Probability of waiting in an M/M/c queue with offered load a (< c) Erlangs."""
+    if not 0 <= a < c:
+        raise ValueError("need 0 <= a < c")
+    b = 1.0  # Erlang B, built up one server at a time (numerically stable)
+    for k in range(1, c + 1):
+        b = a * b / (k + a * b)
+    return c * b / (c - a * (1 - b))
 
 
 def operating_point(c: MeasuredConfig, w: Workload, batch: int) -> OperatingPoint:
@@ -122,28 +161,51 @@ def evaluate(c: MeasuredConfig, w: Workload) -> Recommendation:
             why.append(f"TPOT {p1.tpot_s * 1e3:.1f} ms at batch 1")
         return Recommendation(feasible=False, reason="misses SLO: " + ", ".join(why), **base)
 
-    best = max(ok, key=lambda p: p.capacity_rps)
-    replicas = math.ceil(w.rps / best.capacity_rps)
-    per_replica = w.rps / replicas
-    operating = next(p for p in ok if p.capacity_rps >= per_replica - 1e-12)
-    return Recommendation(
-        feasible=True, replicas=replicas, max_num_seqs=best.batch, operating=operating, **base
-    )
+    slots = max(ok, key=lambda p: p.capacity_rps).batch
+    start = max(1, math.ceil(w.rps / ok[-1].capacity_rps))
+    for replicas in range(start, start * 20 + 20):
+        q = queue_prediction(c, w, slots, w.rps / replicas)
+        if q is not None and q.ttft_p90_s <= w.ttft_slo_s:
+            return Recommendation(feasible=True, replicas=replicas, max_num_seqs=slots, queue=q, **base)
+    return Recommendation(feasible=False, reason="queueing keeps p90 TTFT above target", **base)
+
+
+def queue_prediction(c: MeasuredConfig, w: Workload, slots: int, rps: float) -> QueuePrediction | None:
+    """One replica with `slots` = max_num_seqs at `rps`; None if it can't keep up."""
+    full = operating_point(c, w, slots)
+    service = full.ttft_s + w.output_len * full.tpot_s
+    a = rps * service
+    if a >= slots:
+        return None
+    p_wait = erlang_c(slots, a)
+    tail = max(0.0, math.log(p_wait / (1 - TTFT_PERCENTILE)))
+    wait_p90 = tail * (1 + SERVICE_CV2) / 2 / (slots / service - rps)
+    return QueuePrediction(slots, rps, service, a / slots, p_wait, wait_p90, busy_point(c, w, slots, rps))
+
+
+def busy_point(c: MeasuredConfig, w: Workload, slots: int, rps: float) -> OperatingPoint:
+    """Expected requests in flight B, from Little's law B = rps * (TTFT(B) + O * TPOT(B)).
+
+    The right side grows with B, so iterating from B = 1 climbs to the fixed point.
+    """
+    b = 1
+    for _ in range(slots):
+        p = operating_point(c, w, b)
+        nxt = max(1, min(slots, math.ceil(rps * (p.ttft_s + w.output_len * p.tpot_s))))
+        if nxt <= b:
+            return p
+        b = nxt
+    return operating_point(c, w, b)
 
 
 # On equal cost, prefer less quantization (no accuracy risk), then more latency headroom.
 QUANT_PREFERENCE = {"bf16": 0, "fp8": 1, "awq-int4": 2}
 
 
-def predict(c: MeasuredConfig, w: Workload, max_num_seqs: int) -> OperatingPoint | None:
-    """Expected operating point of one replica at w.rps, or None if it can't keep up."""
-    seq_len = w.prompt_len + w.output_len
-    b_max = min(max_num_seqs, c.kv_cache_tokens // seq_len, c.max_measured_batch)
-    for b in range(1, b_max + 1):
-        p = operating_point(c, w, b)
-        if p.capacity_rps >= w.rps:
-            return p
-    return None
+def predict(c: MeasuredConfig, w: Workload, max_num_seqs: int) -> QueuePrediction | None:
+    """One replica with this max_num_seqs at w.rps (as limited by KV cache and measurements)."""
+    slots = min(max_num_seqs, c.kv_cache_tokens // (w.prompt_len + w.output_len), c.max_measured_batch)
+    return queue_prediction(c, w, slots, w.rps) if slots >= 1 else None
 
 
 def recommend(w: Workload, quants: set[str] | None = None, configs: list[MeasuredConfig] | None = None) -> list[Recommendation]:
@@ -160,7 +222,7 @@ def recommend(w: Workload, quants: set[str] | None = None, configs: list[Measure
 
 def table(w: Workload, recs: list[Recommendation], top: int | None = None) -> str:
     rows = [
-        "| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Batch per replica (max_num_seqs) | TTFT ms | TPOT ms | KV cache tokens | Run |",
+        "| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 | TPOT ms | KV cache tokens | Run |",
         "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     feasible = [r for r in recs if r.feasible]
@@ -170,7 +232,7 @@ def table(w: Workload, recs: list[Recommendation], top: int | None = None) -> st
         rows.append(
             f"| {r.gpu} | {r.quant}{note} | {r.replicas} | {r.cost_per_hour:.2f} "
             f"| {r.cost_per_million_tokens(w):.3f} | {r.cost_per_million_tokens(w, output_only=True):.3f} "
-            f"| {o.batch} ({r.max_num_seqs}) | {o.ttft_s * 1e3:.0f} | {o.tpot_s * 1e3:.1f} "
+            f"| {o.batch} ({r.max_num_seqs}) | {r.queue.ttft_p90_s * 1e3:.0f} | {o.tpot_s * 1e3:.1f} "
             f"| {r.kv_cache_tokens:,} | {r.run_id} |"
         )
     if not feasible:

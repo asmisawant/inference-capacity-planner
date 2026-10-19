@@ -9,6 +9,7 @@
   "modal_gpu": "L4",
   "price_per_hour": 0.7992,
   "quant": "bf16",
+  "reached_modal": false,
   "started_at": "2026-10-19T03:02:14+00:00",
   "status": "error",
   "suite": "micro",

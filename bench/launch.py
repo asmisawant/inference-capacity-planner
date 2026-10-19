@@ -3,8 +3,10 @@
     python -m bench.launch --id ID --gpu L4 --suite micro --quant bf16 --out out/ID.json
 
 Always writes the record, even on failure, because a failed run still costs
-money and must reach the ledger. Cost is an upper bound: runner wall-clock
-(which includes image build and container start) x the GPU's hourly price.
+money and must reach the ledger. A run that failed before reaching Modal
+(e.g. a bad token) is marked reached_modal=False and may be retried.
+Cost is an upper bound: runner wall-clock (which includes image build and
+container start) x the GPU's hourly price.
 """
 
 from __future__ import annotations
@@ -59,9 +61,16 @@ def main(argv: list[str] | None = None) -> int:
         ),
         "started_at": _now(),
     }
+    # A pasted secret can carry a trailing newline, which Modal rejects.
+    for key in ("MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET"):
+        if key in os.environ:
+            os.environ[key] = os.environ[key].strip()
+
+    record["reached_modal"] = False  # stays False if sign-in fails: nothing was billed
     t0 = time.monotonic()
     try:
         with modal.enable_output(), app.run():
+            record["reached_modal"] = True
             revision = None
             if run.suite == "vllm":
                 revision = download.remote(MODELS[run.quant][0])

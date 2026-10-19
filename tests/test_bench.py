@@ -87,3 +87,12 @@ INFO 10-19 01:02:31 [kv_cache_utils.py:2396] GPU KV cache size: 99,456 tokens, M
         "kv_cache_size_tokens": 99456,
     }
     assert parse_vllm_log("nothing here") == {}
+
+
+def test_runs_that_never_reached_modal_can_retry_but_still_count_as_spend():
+    ledger = [
+        {"id": "a", "status": "error", "reached_modal": False, "cost_usd_upper_bound": 0.0001},
+        {"id": "b", "status": "error", "reached_modal": True, "cost_usd_upper_bound": 0.2},
+    ]
+    assert [r.id for r in runs.plan(40, [_run("a"), _run("b")], ledger)] == ["a"]
+    assert runs.spent_usd(ledger) == pytest.approx(0.2001)

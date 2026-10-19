@@ -1,8 +1,10 @@
 """Benchmark requests, the spend ledger and the budget guard.
 
 A GPU run only happens if it is listed in bench/requests.json. Each run has an
-`id`; once an id appears in results/ledger.jsonl (success or failure) it is
-never launched again, so re-pushing the request file can't double-spend.
+`id`; once an id appears in results/ledger.jsonl it is never launched again,
+whether it succeeded or failed, so re-pushing the request file can't
+double-spend. The one exception: a run that never got past Modal sign-in
+(reached_modal=False) used no Modal resources and may be retried.
 
     python -m bench.runs plan [--github-output FILE]   # pending runs + budget check
     python -m bench.runs collect OUT_DIR               # file results, append ledger
@@ -83,7 +85,7 @@ def spent_usd(ledger: list[dict]) -> float:
 
 def plan(budget: float, runs: list[Run], ledger: list[dict]) -> list[Run]:
     """Runs not yet in the ledger. Raises if their worst case would break the budget."""
-    done = {e["id"] for e in ledger}
+    done = {e["id"] for e in ledger if e.get("reached_modal", True)}
     pending = [r for r in runs if r.id not in done]
     spent = spent_usd(ledger)
     worst = sum(r.worst_case_usd for r in pending)
@@ -113,6 +115,7 @@ def collect(out_dir: Path, results_dir: Path = RESULTS) -> list[dict]:
                 "suite": rec["suite"],
                 "quant": rec["quant"],
                 "status": rec["status"],
+                "reached_modal": rec.get("reached_modal", True),
                 "wall_s": rec["wall_s"],
                 "cost_usd_upper_bound": rec["cost_usd_upper_bound"],
                 "github_run_url": rec.get("github_run_url"),

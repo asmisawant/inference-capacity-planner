@@ -2,7 +2,8 @@
   "_source": {
     "file": "config.json",
     "repo": "Qwen/Qwen2.5-7B-Instruct",
-    "revision": "a09a35458c702b33eeacc393d103063234e8bc28"
+    "revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+    "safetensors_total_bytes": 15231233024
   },
   "architectures": [
     "Qwen2ForCausalLM"

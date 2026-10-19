@@ -2,7 +2,8 @@
   "_source": {
     "file": "config.json",
     "repo": "ibm-granite/granite-3.1-8b-instruct",
-    "revision": "4009206d5fc95d2e65a7b7633e159d6e97e25d35"
+    "revision": "4009206d5fc95d2e65a7b7633e159d6e97e25d35",
+    "safetensors_total_bytes": 16341696512
   },
   "architectures": [
     "GraniteForCausalLM"

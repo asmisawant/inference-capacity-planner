@@ -197,6 +197,42 @@
         "rps": 1.667,
         "max_num_seqs": 35
       }
+    },
+    {
+      "id": "029-a100-80gb-serve-bf16-longctx",
+      "gpu": "A100-80GB",
+      "suite": "serve",
+      "quant": "bf16",
+      "serve": {
+        "prompt": 2048,
+        "output": 256,
+        "rps": 2.0,
+        "max_num_seqs": 48
+      }
+    },
+    {
+      "id": "030-h100-serve-fp8-longout",
+      "gpu": "H100",
+      "suite": "serve",
+      "quant": "fp8",
+      "serve": {
+        "prompt": 1024,
+        "output": 512,
+        "rps": 15.0,
+        "max_num_seqs": 256
+      }
+    },
+    {
+      "id": "031-l4-serve-fp8-short",
+      "gpu": "L4",
+      "suite": "serve",
+      "quant": "fp8",
+      "serve": {
+        "prompt": 512,
+        "output": 128,
+        "rps": 3.0,
+        "max_num_seqs": 43
+      }
     }
   ]
 }

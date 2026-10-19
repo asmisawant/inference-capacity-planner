@@ -22,6 +22,17 @@
       "gpu": "L4",
       "suite": "vllm",
       "quant": "bf16"
+    },
+    {
+      "id": "005-l4-micro",
+      "gpu": "L4",
+      "suite": "micro"
+    },
+    {
+      "id": "006-l4-vllm-bf16",
+      "gpu": "L4",
+      "suite": "vllm",
+      "quant": "bf16"
     }
   ]
 }

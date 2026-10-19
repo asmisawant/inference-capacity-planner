@@ -8,7 +8,10 @@ disable_log_stats=False), the same timestamps vLLM uses for its own
 TTFT/TPOT metrics:
     TTFT = first_token_ts - queued_ts
     TPOT = (last_token_ts - first_token_ts) / (generated tokens - 1)
-Prompts are random token ids and prefix caching is off, so nothing is cached
+TPOT under load includes steps shared with other requests' prefill. The clean
+per-step decode time comes from two runs with different output lengths:
+    decode_step = (span_long - span_short) / (long - short)
+where span = first request queued -> last token. Prompts are random token ids and prefix caching is off, so nothing is cached
 between requests.
 """
 
@@ -31,7 +34,11 @@ MAX_NUM_SEQS = 256
 TTFT_PROMPT_LENS = (128, 512, 1024, 2048, 4000)
 TTFT_TRIALS = 5
 DECODE_PROMPT_LEN = 512
-DECODE_OUTPUT_LEN = 128
+# Each batch runs twice, with a short and a long output. Both runs spend the same time on
+# prefill (and on decode steps that share the GPU with prefill chunks), so the difference
+# in engine time over the extra tokens is pure full-batch decode.
+DECODE_OUTPUT_SHORT = 64
+DECODE_OUTPUT_LEN = 192
 DECODE_BATCHES = (1, 2, 4, 8, 16, 32, 64, 128, 256)
 
 _rng = random.Random(0)
@@ -134,29 +141,42 @@ def main() -> None:
         )
     result["ttft"] = ttft
 
-    # Decode: B requests of DECODE_PROMPT_LEN prompt + DECODE_OUTPUT_LEN output, all submitted at once.
+    # Decode: B requests of DECODE_PROMPT_LEN prompt, all submitted at once, run with a short
+    # and a long output length.
+    def decode_run(b: int, out_len: int) -> tuple[list[dict], float, float]:
+        outs, wall = generate([random_prompt(DECODE_PROMPT_LEN) for _ in range(b)], out_len)
+        reqs = [request_timing(o) for o in outs]
+        assert all(r["generated_tokens"] == out_len for r in reqs), "short generation"
+        span = max(r["last_token_ts"] for r in reqs) - min(r["queued_ts"] for r in reqs)
+        return reqs, span, wall
+
     decode = []
     per_seq = DECODE_PROMPT_LEN + DECODE_OUTPUT_LEN
     for b in DECODE_BATCHES:
         if b > MAX_NUM_SEQS or b * per_seq > kv_tokens:
             decode.append({"batch": b, "skipped": "exceeds KV cache or max_num_seqs"})
             continue
-        outs, wall = generate([random_prompt(DECODE_PROMPT_LEN) for _ in range(b)], DECODE_OUTPUT_LEN)
-        reqs = [request_timing(o) for o in outs]
-        assert all(r["generated_tokens"] == DECODE_OUTPUT_LEN for r in reqs), "short generation"
+        _, span_short, _ = decode_run(b, DECODE_OUTPUT_SHORT)
+        reqs, span, wall = decode_run(b, DECODE_OUTPUT_LEN)
+        step = (span - span_short) / (DECODE_OUTPUT_LEN - DECODE_OUTPUT_SHORT)
         tpots = [r["tpot_s"] for r in reqs]
-        span = max(r["last_token_ts"] for r in reqs) - min(r["queued_ts"] for r in reqs)
         decode.append(
             {
                 "batch": b,
                 "prompt_len": DECODE_PROMPT_LEN,
                 "output_len": DECODE_OUTPUT_LEN,
+                "output_len_short": DECODE_OUTPUT_SHORT,
+                # mean context over the steps that the difference measures
+                "decode_context_len": DECODE_PROMPT_LEN + (DECODE_OUTPUT_SHORT + DECODE_OUTPUT_LEN) // 2,
+                "decode_step_s": step,
+                "decode_tokens_per_s": b / step,
                 "tpot_s_median": statistics.median(tpots),
                 "tpot_s_max": max(tpots),
                 "ttft_s_median": statistics.median(r["ttft_s"] for r in reqs),
                 "ttft_s_max": max(r["ttft_s"] for r in reqs),
                 "output_tokens_per_s": b * DECODE_OUTPUT_LEN / span,
                 "engine_span_s": span,
+                "engine_span_short_s": span_short,
                 "wall_s": wall,
             }
         )

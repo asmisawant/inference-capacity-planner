@@ -44,8 +44,8 @@ def gpu_measured_table(results: list[dict]) -> str:
     if not runs:
         return NO_RESULTS
     rows = [
-        "| GPU | Device (nvidia-smi) | Memory GiB (measured / spec) | Copy bandwidth GB/s (% of datasheet) | BF16 GEMM TFLOPS (%) | FP8 GEMM TFLOPS (%) | INT8 GEMM TOPS (%) | Run |",
-        "|---|---|---:|---:|---:|---:|---:|---|",
+        "| GPU | Device (nvidia-smi) | Memory GiB (measured / spec) | GEMV read GB/s (% of datasheet) | Copy GB/s (%) | BF16 GEMM TFLOPS (%) | FP8 GEMM TFLOPS (%) | INT8 GEMM TOPS (%) | Run |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---|",
     ]
     for (gpu, _), r in runs.items():
         spec = GPUS[gpu]
@@ -53,6 +53,8 @@ def gpu_measured_table(results: list[dict]) -> str:
         micro = res["micro"]
         mem = micro["torch_info"]["total_memory_bytes"] / 2**30
         bw = micro["bandwidth"]["median"]
+        gemv = micro.get("gemv_bandwidth", {}).get("median")  # added after run 003
+        gemv_cell = "–" if gemv is None else f"{gemv:,.0f} ({_pct(gemv, spec.mem_bw_gbs)})"
 
         def mm(dt: str) -> str:
             m = micro["matmul"][dt]
@@ -63,7 +65,7 @@ def gpu_measured_table(results: list[dict]) -> str:
 
         rows.append(
             f"| {gpu} | {res['gpu_info']['name']} | {mem:.1f} / {spec.memory_gib:g} "
-            f"| {bw:,.0f} ({_pct(bw, spec.mem_bw_gbs)}) | {mm('bf16')} | {mm('fp8')} | {mm('int8')} "
+            f"| {gemv_cell} | {bw:,.0f} ({_pct(bw, spec.mem_bw_gbs)}) | {mm('bf16')} | {mm('fp8')} | {mm('int8')} "
             f"| [{r['id']}]({r['github_run_url']}) |"
         )
     return "\n".join(rows)
@@ -116,27 +118,33 @@ def ttft_table(results: list[dict]) -> str:
 
 
 def decode_table(results: list[dict]) -> str:
+    """Decode step time vs roofline, plus what a request sees under load.
+
+    "Decode step" is the clean per-step time from the two-length difference
+    (bench/vllm_bench.py); runs before that change only have TPOT under load.
+    """
     runs = latest(results, "vllm")
     if not runs:
         return NO_RESULTS
     m = load_model()
     rows = [
-        "| GPU | Quant | Batch | TPOT ms (vLLM, median) | TPOT ms (roofline) | vLLM / roofline | Output tok/s (vLLM) | $/1M output tokens (vLLM) |",
-        "|---|---|---:|---:|---:|---:|---:|---:|",
+        "| GPU | Quant | Batch | Decode step ms (vLLM) | Decode step ms (roofline) | vLLM / roofline | Decode tok/s (vLLM) | $/1M output tokens | TPOT ms under load (median) |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for (gpu, quant), r in runs.items():
         for d in r["result"]["vllm"]["decode"]:
             if "skipped" in d:
                 continue
-            ctx = d["prompt_len"] + d["output_len"] // 2  # mean context during decode
+            step = d.get("decode_step_s")
+            ctx = d.get("decode_context_len", d["prompt_len"] + d["output_len"] // 2)
             pred = rf.decode_step(GPUS[gpu], m, rf.QUANTIZATIONS[quant], d["batch"], ctx).time_s
-            meas = d["tpot_s_median"]
-            tps = d["output_tokens_per_s"]
-            cost = rf.cost_per_million_tokens(r["price_per_hour"], tps)
-            rows.append(
-                f"| {gpu} | {quant} | {d['batch']} | {meas * 1e3:.2f} | {pred * 1e3:.2f} | {meas / pred:.2f} "
-                f"| {tps:,.0f} | {cost:.3f} |"
-            )
+            if step is None:
+                meas_cells = "– | " + f"{pred * 1e3:.2f} | – | – | –"
+            else:
+                tps = d["batch"] / step
+                cost = rf.cost_per_million_tokens(r["price_per_hour"], tps)
+                meas_cells = f"{step * 1e3:.2f} | {pred * 1e3:.2f} | {step / pred:.2f} | {tps:,.0f} | {cost:.3f}"
+            rows.append(f"| {gpu} | {quant} | {d['batch']} | {meas_cells} | {d['tpot_s_median'] * 1e3:.2f} |")
     return "\n".join(rows)
 
 

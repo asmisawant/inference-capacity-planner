@@ -79,6 +79,19 @@ def bandwidth(nbytes: int = 2**30) -> dict:
     return {"unit": "GB/s", "bytes_per_iter": 2 * nbytes, **res}
 
 
+def gemv_bandwidth(rows: int = 16384, cols: int = 65536) -> dict:
+    """BF16 matrix x vector, the shape of batch-1 decode: reads the 2 GiB matrix once.
+
+    Decode is read-dominated, so this is the bandwidth the roofline's decode bound needs;
+    a copy (read + write) usually lands lower.
+    """
+    w = torch.randn(rows, cols, device="cuda", dtype=torch.bfloat16)
+    x = torch.randn(cols, device="cuda", dtype=torch.bfloat16)
+    nbytes = w.numel() * w.element_size()
+    res = _summary(time_ms(lambda: w @ x), nbytes, 1e9)
+    return {"unit": "GB/s", "bytes_per_iter": nbytes, **res}
+
+
 def matmul(dtype: str, n: int = 8192) -> dict:
     """Square n x n x n GEMM: 2*n^3 FLOPs."""
     flops = 2 * n**3
@@ -110,6 +123,7 @@ def run() -> dict:
     return {
         "torch_info": torch_info(),
         "bandwidth": bandwidth(),
+        "gemv_bandwidth": gemv_bandwidth(),
         "matmul": {dt: matmul(dt) for dt in ("bf16", "fp8", "int8")},
     }
 

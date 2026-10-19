@@ -26,6 +26,7 @@ def micro_record(id="m1", bw=240.0, bf16=90.0, finished="2026-10-19T00:00:00+00:
             "micro": {
                 "torch_info": {"total_memory_bytes": 23034 * 2**20},
                 "bandwidth": {"median": bw},
+                "gemv_bandwidth": {"median": 270.0},
                 "matmul": {
                     "bf16": {"median": bf16},
                     "fp8": {"median": 180.0},
@@ -46,7 +47,9 @@ def vllm_record(id="v1", ttft_s=0.2, tpot_s=0.06, tps=1000.0):
                 "log_summary": {"model_loading_gib": 14.25, "available_kv_cache_gib": 5.0},
                 "ttft": [{"prompt_len": 1024, "ttft_s_median": ttft_s}],
                 "decode": [
-                    {"batch": 1, "prompt_len": 512, "output_len": 128, "tpot_s_median": tpot_s,
+                    {"batch": 1, "prompt_len": 512, "output_len": 192, "decode_context_len": 640,
+                     "decode_step_s": tpot_s, "tpot_s_median": tpot_s, "output_tokens_per_s": tps},
+                    {"batch": 2, "prompt_len": 512, "output_len": 128, "tpot_s_median": tpot_s,
                      "output_tokens_per_s": tps},
                     {"batch": 512, "skipped": "exceeds KV cache or max_num_seqs"},
                 ],
@@ -78,7 +81,8 @@ def test_latest_run_wins():
 
 def test_gpu_table_percentages():
     t = v.gpu_measured_table([micro_record()])
-    assert "240 (80%)" in t  # 240 / 300 GB/s
+    assert "240 (80%)" in t  # copy: 240 / 300 GB/s
+    assert "270 (90%)" in t  # GEMV
     assert "90 (74%)" in t  # 90 / 121 TFLOPS
     assert "unsupported" in t
     assert "22.5 / 24" in t  # 23034 MiB
@@ -96,10 +100,13 @@ def test_ttft_and_decode_ratios():
     pred_ttft = rf.ttft_s(g, m, q, 1024)
     t = v.ttft_table([vllm_record(ttft_s=2 * pred_ttft)])
     assert "| 2.00 |" in t
-    pred_tpot = rf.decode_step(g, m, q, 1, 576).time_s
-    d = v.decode_table([vllm_record(tpot_s=1.5 * pred_tpot, tps=1000.0)])
+    pred_step = rf.decode_step(g, m, q, 1, 640).time_s
+    d = v.decode_table([vllm_record(tpot_s=1.5 * pred_step)])
     assert "| 1.50 |" in d
-    assert f"{rf.cost_per_million_tokens(g.price_per_hour, 1000.0):.3f}" in d
+    # decode tok/s = batch / step time, and $/1M follows from it
+    assert f"{rf.cost_per_million_tokens(g.price_per_hour, 1 / (1.5 * pred_step)):.3f}" in d
+    # a run without the two-length measurement shows only TPOT under load
+    assert "| L4 | bf16 | 2 | – |" in d
     assert "| 512 |" not in d  # skipped batch omitted
 
 

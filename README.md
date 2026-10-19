@@ -90,7 +90,7 @@ GPU runs are launched by GitHub Actions (`.github/workflows/bench.yml`) on [Moda
 
 - **What runs:** only the runs listed in `bench/requests.json`. Each run has an id; once an id is in `results/ledger.jsonl` it is never launched again.
 - **Budget guard:** before launching, the workflow adds the spend so far to each pending run's worst case (container timeout × GPU price × 1.1) and refuses to start if the total exceeds `budget_usd` ($40).
-- **Suites:** `micro` measures copy bandwidth and dense GEMM throughput with PyTorch. `vllm` measures KV-cache size, TTFT for one request on an idle engine, and TPOT/throughput for batches of 512-token prompts with 128 output tokens. TTFT and TPOT come from vLLM's own per-request timestamps; prompts are random token ids with prefix caching off.
+- **Suites:** `micro` measures read bandwidth (a BF16 matrix-vector product, the shape of batch-1 decode), copy bandwidth and dense GEMM throughput with PyTorch. `vllm` measures KV-cache size, TTFT for one request on an idle engine, and decode step time/throughput for batches of 512-token prompts. TTFT and TPOT come from vLLM's own per-request timestamps; prompts are random token ids with prefix caching off.
 - **Results:** each run is committed as `results/<id>.json` together with the tables below, which the workflow regenerates.
 
 Spend so far: <!-- BEGIN GENERATED: bench_spend -->
@@ -100,9 +100,9 @@ Spend so far: <!-- BEGIN GENERATED: bench_spend -->
 ### Measured GPU throughput vs datasheet
 
 <!-- BEGIN GENERATED: measured_gpu -->
-| GPU | Device (nvidia-smi) | Memory GiB (measured / spec) | Copy bandwidth GB/s (% of datasheet) | BF16 GEMM TFLOPS (%) | FP8 GEMM TFLOPS (%) | INT8 GEMM TOPS (%) | Run |
-|---|---|---:|---:|---:|---:|---:|---|
-| L4 | NVIDIA L4 | 22.1 / 24 | 231 (77%) | 53 (44%) | 93 (38%) | 119 (49%) | [003-l4-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39220506641) |
+| GPU | Device (nvidia-smi) | Memory GiB (measured / spec) | GEMV read GB/s (% of datasheet) | Copy GB/s (%) | BF16 GEMM TFLOPS (%) | FP8 GEMM TFLOPS (%) | INT8 GEMM TOPS (%) | Run |
+|---|---|---:|---:|---:|---:|---:|---:|---|
+| L4 | NVIDIA L4 | 22.1 / 24 | – | 231 (77%) | 53 (44%) | 93 (38%) | 119 (49%) | [003-l4-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39220506641) |
 <!-- END GENERATED: measured_gpu -->
 
 ### vLLM memory: weights, KV cache and overhead
@@ -129,18 +129,18 @@ The roofline KV capacity assumes zero overhead. "Non-KV overhead" = GPU memory �
 
 ### Decode: vLLM vs roofline
 
-Roofline TPOT uses the mean decode context (512 + 64 tokens). Throughput is output tokens over the engine time from first request queued to last token. $/1M uses the Modal price in the spec table and counts only output tokens.
+Each batch of 512-token prompts runs twice, with 64 and with 192 output tokens. Both runs spend the same time on prefill, so the extra engine time divided by the extra 128 tokens is the clean **decode step** at that batch size; the roofline is evaluated at the mean context over those steps (640 tokens). Decode tok/s and $/1M (output tokens only, Modal price from the spec table) follow from it. **TPOT under load** is the median per-request TPOT from vLLM's timestamps, which also includes steps shared with other requests' prefill. Run 004 predates the two-length measurement and only has TPOT under load.
 
 <!-- BEGIN GENERATED: measured_decode -->
-| GPU | Quant | Batch | TPOT ms (vLLM, median) | TPOT ms (roofline) | vLLM / roofline | Output tok/s (vLLM) | $/1M output tokens (vLLM) |
-|---|---|---:|---:|---:|---:|---:|---:|
-| L4 | bf16 | 1 | 56.47 | 50.88 | 1.11 | 17 | 12.700 |
-| L4 | bf16 | 2 | 58.19 | 50.99 | 1.14 | 33 | 6.640 |
-| L4 | bf16 | 4 | 58.05 | 51.21 | 1.13 | 64 | 3.448 |
-| L4 | bf16 | 8 | 58.91 | 51.65 | 1.14 | 119 | 1.860 |
-| L4 | bf16 | 16 | 60.54 | 52.54 | 1.15 | 209 | 1.063 |
-| L4 | bf16 | 32 | 74.96 | 54.30 | 1.38 | 320 | 0.694 |
-| L4 | bf16 | 64 | 98.33 | 57.83 | 1.70 | 452 | 0.491 |
+| GPU | Quant | Batch | Decode step ms (vLLM) | Decode step ms (roofline) | vLLM / roofline | Decode tok/s (vLLM) | $/1M output tokens | TPOT ms under load (median) |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| L4 | bf16 | 1 | – | 50.88 | – | – | – | 56.47 |
+| L4 | bf16 | 2 | – | 50.99 | – | – | – | 58.19 |
+| L4 | bf16 | 4 | – | 51.21 | – | – | – | 58.05 |
+| L4 | bf16 | 8 | – | 51.65 | – | – | – | 58.91 |
+| L4 | bf16 | 16 | – | 52.54 | – | – | – | 60.54 |
+| L4 | bf16 | 32 | – | 54.30 | – | – | – | 74.96 |
+| L4 | bf16 | 64 | – | 57.83 | – | – | – | 98.33 |
 <!-- END GENERATED: measured_decode -->
 
 ## Development

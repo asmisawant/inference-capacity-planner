@@ -79,6 +79,9 @@ def main(argv: list[str] | None = None) -> int:
             bench = Bench.with_options(gpu=GPUS[run.gpu].modal_gpu, timeout=run.timeout_min * 60)()
             record["result"] = bench.run.remote(run.suite, run.quant, revision)
             record["gpu_call_s"] = time.monotonic() - gpu_t0
+        if "remote_error" in record["result"]:
+            print(record["result"]["traceback"])
+            raise RuntimeError(f"remote: {record['result']['remote_error']}")
         record["status"] = "ok"
     except Exception as e:  # keep going: the record must be written
         record["status"] = "error"

@@ -22,7 +22,11 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       count: ${{ steps.plan.outputs.count }}
     steps:
+      # Branch head, not the triggering commit: an earlier queued run may have
+      # committed ledger entries since, and planning without them would re-run them.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

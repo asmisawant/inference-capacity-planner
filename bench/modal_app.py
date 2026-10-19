@@ -43,14 +43,24 @@ def download(repo_id: str) -> str:
 class Bench:
     @modal.method()
     def run(self, suite: str, quant: str, revision: str | None = None) -> dict:
+        """Returns plain JSON types only: the caller (a GitHub runner) has no torch/vllm
+        installed, so anything else (e.g. torch's TorchVersion str subclass) can't be
+        unpickled there. Errors come back as text for the same reason."""
+        import traceback
+
         from bench import micro
 
-        info = micro.gpu_info()  # nvidia-smi only, no CUDA context
-        if suite == "micro":
-            return {"gpu_info": info, "micro": micro.run()}
-        if suite == "vllm":
-            return {"gpu_info": info, "vllm": self._vllm(quant, revision)}
-        raise ValueError(suite)
+        try:
+            info = micro.gpu_info()  # nvidia-smi only, no CUDA context
+            if suite == "micro":
+                out = {"gpu_info": info, "micro": micro.run()}
+            elif suite == "vllm":
+                out = {"gpu_info": info, "vllm": self._vllm(quant, revision)}
+            else:
+                raise ValueError(suite)
+            return json.loads(json.dumps(out, default=str))
+        except Exception as e:
+            return {"remote_error": f"{type(e).__name__}: {e}", "traceback": traceback.format_exc()}
 
     def _vllm(self, quant: str, revision: str | None) -> dict:
         """Run bench.vllm_bench in a child process, streaming and keeping its logs."""

@@ -40,7 +40,7 @@ def torch_info() -> dict:
         "total_memory_bytes": props.total_memory,
         "compute_capability": f"{props.major}.{props.minor}",
         "sm_count": props.multi_processor_count,
-        "torch_version": torch.__version__,
+        "torch_version": str(torch.__version__),
         "cuda_version": torch.version.cuda,
     }
 

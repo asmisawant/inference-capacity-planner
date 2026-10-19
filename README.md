@@ -94,13 +94,15 @@ GPU runs are launched by GitHub Actions (`.github/workflows/bench.yml`) on [Moda
 - **Results:** each run is committed as `results/<id>.json` together with the tables below, which the workflow regenerates.
 
 Spend so far: <!-- BEGIN GENERATED: bench_spend -->
-8 runs (0 succeeded), at most **$0.10** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
+9 runs (1 succeeded), at most **$0.11** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
 <!-- END GENERATED: bench_spend -->
 
 ### Measured GPU throughput vs datasheet
 
 <!-- BEGIN GENERATED: measured_gpu -->
-_No benchmark results yet._
+| GPU | Device (nvidia-smi) | Memory GiB (measured / spec) | Copy bandwidth GB/s (% of datasheet) | BF16 GEMM TFLOPS (%) | FP8 GEMM TFLOPS (%) | INT8 GEMM TOPS (%) | Run |
+|---|---|---:|---:|---:|---:|---:|---|
+| L4 | NVIDIA L4 | 22.1 / 24 | 231 (77%) | 53 (44%) | 93 (38%) | 119 (49%) | [003-l4-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39220506641) |
 <!-- END GENERATED: measured_gpu -->
 
 ### vLLM memory: weights, KV cache and overhead

@@ -123,3 +123,10 @@ def test_spend_summary(tmp_path):
 @pytest.mark.parametrize("gpu", list(GPUS))
 def test_every_gpu_has_a_modal_name(gpu):
     assert GPUS[gpu].modal_gpu
+
+
+def test_memory_table_notes_compile_fallback():
+    rec = vllm_record()
+    rec["result"]["vllm"]["compile_fallback"] = {"reason": "InductorError", "compilation_config": {"backend": "eager"}}
+    assert "eager backend" in v.vllm_memory_table([rec])
+    assert "eager backend" not in v.vllm_memory_table([vllm_record()])

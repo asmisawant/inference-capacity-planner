@@ -77,8 +77,8 @@ def vllm_memory_table(results: list[dict]) -> str:
         return NO_RESULTS
     m = load_model()
     rows = [
-        "| GPU | Quant | Weights GiB (vLLM / roofline) | KV cache GiB (vLLM) | Non-KV overhead GiB (derived) | KV tokens (vLLM / roofline) | Run |",
-        "|---|---|---:|---:|---:|---:|---|",
+        "| GPU | Quant | Weights GiB (vLLM / roofline) | KV cache GiB (vLLM) | Non-KV overhead GiB (derived) | KV tokens (vLLM / roofline) | Run | Notes |",
+        "|---|---|---:|---:|---:|---:|---|---|",
     ]
     for (gpu, quant), r in runs.items():
         v = r["result"]["vllm"]
@@ -93,7 +93,8 @@ def vllm_memory_table(results: list[dict]) -> str:
         rows.append(
             f"| {gpu} | {quant} | {w if w is not None else '–'} / {pred_w:.2f} "
             f"| {kv if kv is not None else '–'} | {overhead} "
-            f"| {v['engine']['kv_cache_size_tokens']:,} / {pred_kv:,} | [{r['id']}]({r['github_run_url']}) |"
+            f"| {v['engine']['kv_cache_size_tokens']:,} / {pred_kv:,} | [{r['id']}]({r['github_run_url']}) "
+            f"| {'torch.compile fell back to the eager backend (Inductor error)' if v.get('compile_fallback') else ''} |"
         )
     return "\n".join(rows)
 

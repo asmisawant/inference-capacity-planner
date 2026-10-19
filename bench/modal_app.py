@@ -71,12 +71,37 @@ class Bench:
             return {"remote_error": f"{type(e).__name__}: {e}", "traceback": traceback.format_exc()}
 
     def _vllm(self, quant: str, revision: str | None) -> dict:
-        """Run bench.vllm_bench in a child process, streaming and keeping its logs."""
+        """Run bench.vllm_bench in a child process, streaming and keeping its logs.
+
+        If engine startup dies in torch.compile's Inductor backend (vLLM 0.30.0 does this
+        for FP8 weight-only on A100: "auto_functionalized was not removed"), retry once with
+        vLLM's eager compile backend. That keeps CUDA graphs and skips only Inductor fusion,
+        and the result records that the fallback was used.
+        """
+        from bench.parse import parse_vllm_log
+
+        rc, log, result = self._vllm_once(quant, revision, compile_backend=None)
+        fallback = None
+        if rc != 0 and "InductorError" in log:
+            cause = next((l.strip() for l in log.splitlines() if "InductorError" in l), "")
+            fallback = {"reason": cause[-300:], "compilation_config": {"backend": "eager"}}
+            print(f"Inductor failed; retrying with compile backend 'eager': {cause}")
+            rc, log, result = self._vllm_once(quant, revision, compile_backend="eager")
+        if rc != 0:
+            tail = "".join(log.splitlines(keepends=True)[-40:])
+            raise RuntimeError(f"vllm_bench exited {rc}; last log lines:\n{tail}")
+        result["compile_fallback"] = fallback
+        result["log_summary"] = parse_vllm_log(log)
+        return result
+
+    def _vllm_once(self, quant: str, revision: str | None, compile_backend: str | None):
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "out.json")
             cmd = [sys.executable, "-m", "bench.vllm_bench", "--quant", quant, "--out", out]
             if revision:
                 cmd += ["--revision", revision]
+            if compile_backend:
+                cmd += ["--compile-backend", compile_backend]
             env = {**os.environ, "HF_HUB_OFFLINE": "1"}
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd="/root"
@@ -86,13 +111,8 @@ class Bench:
                 print(line, end="")
                 log_lines.append(line)
             rc = proc.wait()
-            log = "".join(log_lines)
-            if rc != 0:
-                raise RuntimeError(f"vllm_bench exited {rc}; last log lines:\n{''.join(log_lines[-40:])}")
-            with open(out) as fh:
-                result = json.load(fh)
-
-        from bench.parse import parse_vllm_log
-
-        result["log_summary"] = parse_vllm_log(log)
-        return result
+            result = None
+            if rc == 0:
+                with open(out) as fh:
+                    result = json.load(fh)
+        return rc, "".join(log_lines), result

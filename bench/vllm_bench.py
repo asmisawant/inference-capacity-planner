@@ -70,6 +70,7 @@ def main() -> None:
     ap.add_argument("--quant", choices=sorted(MODELS), required=True)
     ap.add_argument("--revision")
     ap.add_argument("--gpu-memory-utilization", type=float, default=0.92)
+    ap.add_argument("--compile-backend", help="override vLLM's compilation backend (fallback only)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -89,6 +90,7 @@ def main() -> None:
         enable_prefix_caching=False,
         disable_log_stats=False,
         seed=0,
+        compilation_config={"backend": args.compile_backend} if args.compile_backend else None,
     )
     init_s = time.perf_counter() - t0
     cache = llm.llm_engine.vllm_config.cache_config

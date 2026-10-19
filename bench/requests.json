@@ -119,6 +119,12 @@
       "gpu": "H100",
       "suite": "vllm",
       "quant": "awq-int4"
+    },
+    {
+      "id": "022-a100-80gb-vllm-fp8",
+      "gpu": "A100-80GB",
+      "suite": "vllm",
+      "quant": "fp8"
     }
   ]
 }

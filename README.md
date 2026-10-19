@@ -110,9 +110,9 @@ Spend so far: <!-- BEGIN GENERATED: bench_spend -->
 The roofline KV capacity assumes zero overhead. "Non-KV overhead" = GPU memory × utilization − weights − KV cache, using vLLM's own log figures; it covers activations, CUDA graphs and the CUDA context.
 
 <!-- BEGIN GENERATED: measured_vllm_memory -->
-| GPU | Quant | Weights GiB (vLLM / roofline) | KV cache GiB (vLLM) | Non-KV overhead GiB (derived) | KV tokens (vLLM / roofline) | Run |
-|---|---|---:|---:|---:|---:|---|
-| L4 | bf16 | 14.29 / 14.19 | 3.25 | 3.15 | 60,816 / 147,826 | [006-l4-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39222305725) |
+| GPU | Quant | Weights GiB (vLLM / roofline) | KV cache GiB (vLLM) | Non-KV overhead GiB (derived) | KV tokens (vLLM / roofline) | Run | Notes |
+|---|---|---:|---:|---:|---:|---|---|
+| L4 | bf16 | 14.29 / 14.19 | 3.25 | 3.15 | 60,816 / 147,826 | [006-l4-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39222305725) |  |
 <!-- END GENERATED: measured_vllm_memory -->
 
 ### TTFT: vLLM vs roofline

@@ -15,6 +15,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import random
 import subprocess
 import sys
 import time
@@ -23,6 +24,8 @@ from pathlib import Path
 
 from bench.runs import Run, cost_usd
 from capacity_planner.gpus import GPUS
+
+START_ATTEMPTS = 5  # app.run() retries on Modal rate limits before anything starts
 
 
 def _now() -> str:
@@ -68,25 +71,39 @@ def main(argv: list[str] | None = None) -> int:
 
     record["reached_modal"] = False  # stays False if sign-in fails: nothing was billed
     t0 = time.monotonic()
-    try:
-        with modal.enable_output(), app.run():
-            record["reached_modal"] = True
-            revision = None
-            if run.suite == "vllm":
-                revision = download.remote(MODELS[run.quant][0])
-                record["model_revision"] = revision
-            gpu_t0 = time.monotonic()
-            bench = Bench.with_options(gpu=GPUS[run.gpu].modal_gpu, timeout=run.timeout_min * 60)()
-            record["result"] = bench.run.remote(run.suite, run.quant, revision)
-            record["gpu_call_s"] = time.monotonic() - gpu_t0
-        if "remote_error" in record["result"]:
-            print(record["result"]["traceback"])
-            raise RuntimeError(f"remote: {record['result']['remote_error']}")
-        record["status"] = "ok"
-    except Exception as e:  # keep going: the record must be written
-        record["status"] = "error"
-        record["error"] = f"{type(e).__name__}: {e}"
-        traceback.print_exc()
+    for attempt in range(1, START_ATTEMPTS + 1):
+        try:
+            with modal.enable_output(), app.run():
+                record["reached_modal"] = True
+                revision = None
+                if run.suite == "vllm":
+                    revision = download.remote(MODELS[run.quant][0])
+                    record["model_revision"] = revision
+                gpu_t0 = time.monotonic()
+                bench = Bench.with_options(gpu=GPUS[run.gpu].modal_gpu, timeout=run.timeout_min * 60)()
+                record["result"] = bench.run.remote(run.suite, run.quant, revision)
+                record["gpu_call_s"] = time.monotonic() - gpu_t0
+            if "remote_error" in record["result"]:
+                print(record["result"]["traceback"])
+                raise RuntimeError(f"remote: {record['result']['remote_error']}")
+            record["status"] = "ok"
+            break
+        except modal.exception.ResourceExhaustedError as e:
+            # e.g. "App create rate limit exceeded" when several jobs start at once.
+            # Retry only if the app never started, so nothing ran twice.
+            if record["reached_modal"] or attempt == START_ATTEMPTS:
+                record["status"], record["error"] = "error", f"{type(e).__name__}: {e}"
+                traceback.print_exc()
+                break
+            delay = 30 * attempt + random.uniform(0, 15)
+            print(f"{run.id}: {e}; retrying in {delay:.0f}s (attempt {attempt}/{START_ATTEMPTS})")
+            time.sleep(delay)
+        except Exception as e:  # keep going: the record must be written
+            record["status"] = "error"
+            record["error"] = f"{type(e).__name__}: {e}"
+            traceback.print_exc()
+            break
+    record["start_attempts"] = attempt
     record["wall_s"] = time.monotonic() - t0
     record["cost_usd_upper_bound"] = cost_usd(run.gpu, record["wall_s"])
     record["finished_at"] = _now()

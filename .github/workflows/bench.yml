@@ -41,7 +41,7 @@ jobs:
     timeout-minutes: 75
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 2  # Modal rate-limits app creation
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:

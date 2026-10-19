@@ -30,7 +30,7 @@ class GPUSpec:
     fp8_tflops: float | None
     int8_tops: float | None
     price_per_hour: float
-    modal_gpu: str  # the string passed to Modal's `gpu=` argument
+    modal_gpu: str  # the string passed to Modal's `gpu=` argument (https://modal.com/docs/guide/gpu)
     spec_source: str
     price_source: str = MODAL_PRICE_SOURCE
     notes: tuple[str, ...] = field(default_factory=tuple)
@@ -121,7 +121,7 @@ GPUS: dict[str, GPUSpec] = {
         fp8_tflops=1978.9,  # datasheet: 3,958 with sparsity
         int8_tops=1978.9,
         price_per_hour=_per_second_to_hour(0.001097),
-        modal_gpu="H100",
+        modal_gpu="H100!",  # "!" stops Modal upgrading the request to an H200
         spec_source="https://www.nvidia.com/en-us/data-center/h100/ (H100 SXM datasheet)",
         notes=("Assumes Modal's H100 is the SXM part.",),
     ),

@@ -19,8 +19,9 @@ from dataclasses import dataclass
 from .gpus import GPUSpec
 from .models import ModelSpec
 
-# vLLM's default --gpu-memory-utilization.
-DEFAULT_GPU_MEMORY_UTILIZATION = 0.9
+# vLLM's default --gpu-memory-utilization (vllm/config/cache.py in vLLM 0.30.0, the
+# version the benchmarks pin).
+DEFAULT_GPU_MEMORY_UTILIZATION = 0.92
 
 
 @dataclass(frozen=True)

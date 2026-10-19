@@ -33,7 +33,7 @@ def test_effective_compute_dtype_falls_back_without_fp8(m):
 
 def test_kv_capacity_hand_calculation(m):
     h100 = get_gpu("H100")
-    free = 80 * 2**30 * 0.9 - 2 * m.total_params
+    free = 80 * 2**30 * 0.92 - 2 * m.total_params
     assert rf.kv_cache_capacity_tokens(h100, m, BF16) == int(free // 57_344)
 
 

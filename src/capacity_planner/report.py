@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from . import roofline as rf
-from . import validation
+from . import calibration, recommend, validation
 from .gpus import GPUS
 from .models import load_model
 
@@ -93,6 +93,12 @@ SECTIONS = {
     "measured_ttft": lambda: validation.ttft_table(validation.load_results()),
     "measured_decode": lambda: validation.decode_table(validation.load_results()),
     "bench_spend": validation.spend_summary,
+    "calibration_efficiency": lambda: calibration.efficiency_table(),
+    "calibration_fits": lambda: calibration.fit_table(),
+    "recommend_examples": lambda: recommend.examples_markdown(),
+    "serve_validation": lambda: validation.serve_table(validation.load_results()),
+    "ttft_margins": lambda: validation.margin_table(validation.load_results()),
+    "serve_holdout": lambda: validation.holdout_table(validation.load_results()),
 }
 
 

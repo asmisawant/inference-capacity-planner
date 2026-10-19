@@ -130,3 +130,12 @@ def test_memory_table_notes_compile_fallback():
     rec["result"]["vllm"]["compile_fallback"] = {"reason": "InductorError", "compilation_config": {"backend": "eager"}}
     assert "eager backend" in v.vllm_memory_table([rec])
     assert "eager backend" not in v.vllm_memory_table([vllm_record()])
+
+
+def test_margin_table_lists_every_gpu():
+    t = v.margin_table([])
+    assert t == v.NO_RESULTS
+
+
+def test_holdout_table_without_holdout_runs():
+    assert v.holdout_table([]) == v.NO_RESULTS

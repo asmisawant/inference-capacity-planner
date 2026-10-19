@@ -58,6 +58,7 @@ jobs:
           python -m bench.launch --id "${{ matrix.id }}" --gpu "${{ matrix.gpu }}"
           --suite "${{ matrix.suite }}" --quant "${{ matrix.quant }}"
           --timeout-min "${{ matrix.timeout_min }}" --out "out/${{ matrix.id }}.json"
+          --serve '${{ toJSON(matrix.serve) }}'
       - if: always()
         uses: actions/upload-artifact@v4
         with:

@@ -3,6 +3,7 @@ import pytest
 from bench import vllm_bench
 from capacity_planner import transfer as tr
 from capacity_planner import validation as v
+from capacity_planner.gpus import GPUS
 from capacity_planner.models import DEFAULT_MODEL
 
 
@@ -81,3 +82,28 @@ def test_comparison_table():
     assert "| -50% /" in t  # decode predicted at half the measured step
     # A Qwen-7B run on the same GPU doesn't count as a Granite measurement.
     assert "not run yet" in tr.comparison_table([{**run, "model": DEFAULT_MODEL}], {"k": p})
+
+
+def test_candidate_configs():
+    from capacity_planner.calibration import measured_configs
+
+    assert [c.key for c in tr.candidate_configs()] == [c.key for c in measured_configs()]  # Qwen-7B: measured only
+    granite = tr.candidate_configs("Granite-3.1-8B-Instruct", [r for r in v.load_results() if r["model"] == DEFAULT_MODEL])
+    keys = {c.key for c in granite}
+    assert all(c.predicted for c in granite)
+    assert ("H100", "bf16", 2) in keys and ("L4", "bf16", 2) not in keys  # TP needs NVLink
+    assert not any(q == "awq-int4" for _, q, _ in keys)  # no official Granite AWQ checkpoint
+    big = {c.key for c in tr.candidate_configs("Qwen2.5-32B-Instruct", [r for r in v.load_results() if r["model"] == DEFAULT_MODEL])}
+    assert ("L4", "bf16", 1) not in big and ("H100", "bf16", 2) in big  # 65 GB of BF16 weights
+
+
+def test_recommend_flags_predicted_configs():
+    from capacity_planner.recommend import Workload, recommend, table
+
+    w = Workload(1024, 256, rps=5, ttft_slo_s=0.5, tpot_slo_s=0.05)
+    recs = recommend(w, model="Qwen2.5-32B-Instruct")
+    best = next(r for r in recs if r.feasible)
+    tp2 = next(r for r in recs if r.gpus_per_replica == 2)
+    assert tp2.price_per_hour == pytest.approx(2 * GPUS[tp2.gpu].price_per_hour)
+    if best.predicted:
+        assert "predicted ²" in table(w, recs)

@@ -29,7 +29,7 @@ from pathlib import Path
 from . import roofline as rf
 from .calibration import Fit, fits, gpu_efficiency
 from .gpus import GPUS, GPUSpec
-from .models import DEFAULT_MODEL, ModelSpec, load_model
+from .models import DEFAULT_MODEL, ModelSpec, load_model, registry
 from .validation import latest, load_results
 
 # Mirror bench/vllm_bench.py (tests check they agree).
@@ -83,10 +83,23 @@ class TransferredConfig:
     memory_total_gib: float  # nvidia-smi memory.total on the source run
     overhead_gib: float  # non-KV, non-weight memory per GPU on the source run
     gpu_memory_utilization: float = rf.DEFAULT_GPU_MEMORY_UTILIZATION
+    compile_fallback: bool = False  # the source run needed vLLM's eager compile backend
+
+    # Same interface as calibration.MeasuredConfig, for the recommender.
+    predicted = True
+    max_model_len = 4096  # what the bench (and so the fits) used
+    max_num_seqs = MAX_NUM_SEQS
+    max_measured_batch = MAX_NUM_SEQS
 
     @property
     def source_run(self) -> str:
         return self.fit.run_id
+
+    source = source_run
+
+    @property
+    def key(self) -> tuple[str, str, int]:
+        return self.gpu.name, self.quant.name, self.tp
 
     def roofline_ttft_s(self, prompt_len: int) -> float:
         return rf.ttft_s(self.gpu, self.model, self.quant, prompt_len, eff=self.eff, tp=self.tp)
@@ -144,7 +157,36 @@ def transfer(target: Target, results: list[dict] | None = None) -> TransferredCo
         fit=fit,
         memory_total_gib=total,
         overhead_gib=overhead,
+        compile_fallback=bool(run["result"]["vllm"].get("compile_fallback")),
     )
+
+
+TRANSFER_TPS = (1, 2)  # GPU counts the recommender considers for unmeasured setups
+
+
+def candidate_configs(model: str = DEFAULT_MODEL, results: list[dict] | None = None) -> list:
+    """What the recommender may choose from for `model`: every config vLLM ran for it, plus,
+    for any other model, every Qwen-7B-calibrated (GPU, quant) transferred to it on 1 or 2
+    GPUs (NVLink GPUs only for 2) where the weights fit."""
+    from .calibration import TP_DEGREES, measured_configs
+
+    results = load_results() if results is None else results
+    spec = load_model(model)
+    configs: list = measured_configs(results, spec, TP_DEGREES)
+    if model == DEFAULT_MODEL:
+        return configs
+    have = {c.key for c in configs}
+    awq_ok = registry()[model].awq_repo is not None
+    for f in fits(results):
+        for tp in TRANSFER_TPS:
+            if (f.gpu, f.quant, tp) in have or (tp > 1 and GPUS[f.gpu].nvlink_gbs is None):
+                continue
+            if f.quant == "awq-int4" and not awq_ok:
+                continue
+            c = transfer(Target(model, f.gpu, f.quant, tp), results)
+            if c.kv_cache_gib > 0:
+                configs.append(c)
+    return configs
 
 
 def prediction(target: Target, results: list[dict] | None = None) -> dict:

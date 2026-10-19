@@ -14,8 +14,8 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MODELS = ROOT / "bench" / "models.json"
 DATA = ROOT / "src" / "capacity_planner" / "data"
+MODELS = DATA / "models.json"
 
 
 def get_json(url: str) -> dict:
@@ -24,19 +24,31 @@ def get_json(url: str) -> dict:
         return json.load(r)
 
 
+def weights_bytes(repo: str, sha: str) -> int:
+    """Total tensor bytes from the safetensors index (sharded checkpoints)."""
+    idx = get_json(f"https://huggingface.co/{repo}/resolve/{sha}/model.safetensors.index.json")
+    return int(idx["metadata"]["total_size"])
+
+
 def main() -> int:
     for m in json.loads(MODELS.read_text())["models"]:
         dest = DATA / m["file"]
         if dest.exists():
-            print(f"{m['name']}: already have {dest.name}")
+            cfg = json.loads(dest.read_text())
+            src = cfg["_source"]
+            if "safetensors_total_bytes" not in src:
+                src["safetensors_total_bytes"] = weights_bytes(src["repo"], src["revision"])
+                dest.write_text(json.dumps(cfg, indent=2, sort_keys=True) + "\n")
+                print(f"{m['name']}: added safetensors size")
             continue
         info = get_json(f"https://huggingface.co/api/models/{m['repo']}")
         if info.get("gated"):
             raise SystemExit(f"{m['repo']} is gated; it needs an HF token")
         sha = info["sha"]
         cfg = get_json(f"https://huggingface.co/{m['repo']}/resolve/{sha}/config.json")
-        out = {"_source": {"repo": m["repo"], "revision": sha, "file": "config.json"}, **cfg}
-        dest.write_text(json.dumps(out, indent=2, sort_keys=True) + "\n")
+        src = {"repo": m["repo"], "revision": sha, "file": "config.json",
+               "safetensors_total_bytes": weights_bytes(m["repo"], sha)}
+        dest.write_text(json.dumps({"_source": src, **cfg}, indent=2, sort_keys=True) + "\n")
         print(f"{m['name']}: wrote {dest.name} at {sha}")
     return 0
 

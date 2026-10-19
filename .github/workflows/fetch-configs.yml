@@ -4,7 +4,7 @@ name: fetch-configs
 # and commit them, pinned to the revision read.
 on:
   push:
-    paths: ["bench/models.json"]
+    paths: ["src/capacity_planner/data/models.json"]
   workflow_dispatch:
 
 permissions:

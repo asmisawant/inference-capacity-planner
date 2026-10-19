@@ -94,7 +94,7 @@ GPU runs are launched by GitHub Actions (`.github/workflows/bench.yml`) on [Moda
 - **Results:** each run is committed as `results/<id>.json` together with the tables below, which the workflow regenerates.
 
 Spend so far: <!-- BEGIN GENERATED: bench_spend -->
-12 runs (4 succeeded), at most **$0.32** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
+27 runs (15 succeeded), at most **$1.68** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
 <!-- END GENERATED: bench_spend -->
 
 ### Measured GPU throughput vs datasheet
@@ -103,6 +103,9 @@ Spend so far: <!-- BEGIN GENERATED: bench_spend -->
 | GPU | Device (nvidia-smi) | Memory GiB (measured / spec) | GEMV read GB/s (% of datasheet) | Copy GB/s (%) | BF16 GEMM TFLOPS (%) | FP8 GEMM TFLOPS (%) | INT8 GEMM TOPS (%) | Run |
 |---|---|---:|---:|---:|---:|---:|---:|---|
 | L4 | NVIDIA L4 | 22.1 / 24 | 259 (86%) | 230 (77%) | 53 (44%) | 92 (38%) | 128 (53%) | [005-l4-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39222305725) |
+| A10G | NVIDIA A10 | 22.1 / 24 | 498 (83%) | 484 (81%) | 77 (111%) | unsupported | 147 (–) | [007-a10g-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
+| A100-40GB | NVIDIA A100-SXM4-40GB | 39.5 / 40 | 1,416 (91%) | 1,381 (89%) | 262 (84%) | unsupported | 408 (65%) | [008-a100-40gb-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
+| H100 | NVIDIA H100 80GB HBM3 | 79.2 / 80 | 2,863 (85%) | 2,998 (89%) | 791 (80%) | 1431 (72%) | 874 (44%) | [010-h100-micro](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
 <!-- END GENERATED: measured_gpu -->
 
 ### vLLM memory: weights, KV cache and overhead
@@ -112,7 +115,15 @@ The roofline KV capacity assumes zero overhead. "Non-KV overhead" = GPU memory �
 <!-- BEGIN GENERATED: measured_vllm_memory -->
 | GPU | Quant | Weights GiB (vLLM / roofline) | KV cache GiB (vLLM) | Non-KV overhead GiB (derived) | KV tokens (vLLM / roofline) | Run | Notes |
 |---|---|---:|---:|---:|---:|---|---|
+| L4 | awq-int4 | 5.29 / 5.19 | 13.17 | 2.23 | 246,528 / 316,292 | [018-l4-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |  |
 | L4 | bf16 | 14.29 / 14.19 | 3.25 | 3.15 | 60,816 / 147,826 | [006-l4-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39222305725) |  |
+| L4 | fp8 | 8.17 / 8.11 | 10.17 | 2.35 | 190,512 / 261,618 | [015-l4-vllm-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |  |
+| A10G | awq-int4 | 5.29 / 5.19 | 13.16 | 2.24 | 246,480 / 316,292 | [019-a10g-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |  |
+| A100-40GB | bf16 | 14.29 / 14.19 | 19.25 | 3.26 | 360,528 / 423,452 | [012-a100-40gb-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |  |
+| A100-80GB | awq-int4 | 5.29 / 5.19 | 65.76 | 2.55 | 1,231,408 / 1,280,982 | [020-a100-80gb-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |  |
+| H100 | awq-int4 | 5.38 / 5.19 | 64.25 | 3.65 | 1,203,072 / 1,280,982 | [021-h100-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |  |
+| H100 | bf16 | 14.29 / 14.19 | 55.28 | 3.71 | 1,035,104 / 1,112,516 | [014-h100-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |  |
+| H100 | fp8 | 8.17 / 8.11 | 61.37 | 3.74 | 1,149,168 / 1,226,308 | [017-h100-vllm-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |  |
 <!-- END GENERATED: measured_vllm_memory -->
 
 ### TTFT: vLLM vs roofline
@@ -120,11 +131,51 @@ The roofline KV capacity assumes zero overhead. "Non-KV overhead" = GPU memory �
 <!-- BEGIN GENERATED: measured_ttft -->
 | GPU | Quant | Prompt tokens | TTFT ms (vLLM, median) | TTFT ms (roofline) | vLLM / roofline |
 |---|---|---:|---:|---:|---:|
+| L4 | awq-int4 | 128 | 41.1 | 18.6 | 2.21 |
+| L4 | awq-int4 | 512 | 149.9 | 55.7 | 2.69 |
+| L4 | awq-int4 | 1024 | 287.7 | 112.2 | 2.56 |
+| L4 | awq-int4 | 2048 | 575.9 | 227.9 | 2.53 |
+| L4 | awq-int4 | 4000 | 1193.9 | 458.0 | 2.61 |
 | L4 | bf16 | 128 | 71.3 | 50.8 | 1.40 |
 | L4 | bf16 | 512 | 143.7 | 55.7 | 2.58 |
 | L4 | bf16 | 1024 | 257.2 | 112.2 | 2.29 |
 | L4 | bf16 | 2048 | 505.7 | 227.9 | 2.22 |
 | L4 | bf16 | 4000 | 1034.3 | 458.0 | 2.26 |
+| L4 | fp8 | 128 | 44.2 | 29.0 | 1.52 |
+| L4 | fp8 | 512 | 107.9 | 29.1 | 3.71 |
+| L4 | fp8 | 1024 | 190.1 | 56.9 | 3.34 |
+| L4 | fp8 | 2048 | 403.5 | 117.2 | 3.44 |
+| L4 | fp8 | 4000 | 836.0 | 241.8 | 3.46 |
+| A10G | awq-int4 | 128 | 32.1 | 23.9 | 1.34 |
+| A10G | awq-int4 | 512 | 112.5 | 96.2 | 1.17 |
+| A10G | awq-int4 | 1024 | 227.8 | 193.9 | 1.17 |
+| A10G | awq-int4 | 2048 | 453.7 | 393.9 | 1.15 |
+| A10G | awq-int4 | 4000 | 906.7 | 791.6 | 1.15 |
+| A100-40GB | bf16 | 128 | 20.1 | 9.8 | 2.05 |
+| A100-40GB | bf16 | 512 | 36.9 | 21.6 | 1.71 |
+| A100-40GB | bf16 | 1024 | 67.8 | 43.5 | 1.56 |
+| A100-40GB | bf16 | 2048 | 126.9 | 88.4 | 1.44 |
+| A100-40GB | bf16 | 4000 | 254.6 | 177.6 | 1.43 |
+| A100-80GB | awq-int4 | 128 | 16.1 | 5.4 | 2.99 |
+| A100-80GB | awq-int4 | 512 | 48.6 | 21.6 | 2.25 |
+| A100-80GB | awq-int4 | 1024 | 91.2 | 43.5 | 2.10 |
+| A100-80GB | awq-int4 | 2048 | 181.9 | 88.4 | 2.06 |
+| A100-80GB | awq-int4 | 4000 | 358.7 | 177.6 | 2.02 |
+| H100 | awq-int4 | 128 | 7.6 | 1.7 | 4.47 |
+| H100 | awq-int4 | 512 | 14.4 | 6.8 | 2.11 |
+| H100 | awq-int4 | 1024 | 24.8 | 13.7 | 1.81 |
+| H100 | awq-int4 | 2048 | 47.4 | 27.9 | 1.70 |
+| H100 | awq-int4 | 4000 | 96.1 | 56.0 | 1.72 |
+| H100 | bf16 | 128 | 8.8 | 4.5 | 1.93 |
+| H100 | bf16 | 512 | 13.2 | 6.8 | 1.94 |
+| H100 | bf16 | 1024 | 24.2 | 13.7 | 1.76 |
+| H100 | bf16 | 2048 | 47.2 | 27.9 | 1.69 |
+| H100 | bf16 | 4000 | 91.3 | 56.0 | 1.63 |
+| H100 | fp8 | 128 | 6.8 | 2.6 | 2.62 |
+| H100 | fp8 | 512 | 10.4 | 3.4 | 3.03 |
+| H100 | fp8 | 1024 | 18.1 | 7.0 | 2.60 |
+| H100 | fp8 | 2048 | 33.9 | 14.4 | 2.36 |
+| H100 | fp8 | 4000 | 68.2 | 29.6 | 2.30 |
 <!-- END GENERATED: measured_ttft -->
 
 ### Decode: vLLM vs roofline
@@ -134,6 +185,15 @@ Each batch of 512-token prompts runs twice, with 64 and with 192 output tokens. 
 <!-- BEGIN GENERATED: measured_decode -->
 | GPU | Quant | Batch | Decode step ms (vLLM) | Decode step ms (roofline) | vLLM / roofline | Decode tok/s (vLLM) | $/1M output tokens | TPOT ms under load (median) |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
+| L4 | awq-int4 | 1 | 18.97 | 18.69 | 1.02 | 53 | 4.212 | 18.93 |
+| L4 | awq-int4 | 2 | 19.11 | 18.81 | 1.02 | 105 | 2.122 | 19.51 |
+| L4 | awq-int4 | 4 | 19.42 | 19.06 | 1.02 | 206 | 1.078 | 19.46 |
+| L4 | awq-int4 | 8 | 20.22 | 19.55 | 1.03 | 396 | 0.561 | 20.17 |
+| L4 | awq-int4 | 16 | 21.82 | 20.53 | 1.06 | 733 | 0.303 | 21.78 |
+| L4 | awq-int4 | 32 | 26.32 | 22.49 | 1.17 | 1,216 | 0.183 | 31.88 |
+| L4 | awq-int4 | 64 | 37.67 | 26.41 | 1.43 | 1,699 | 0.131 | 54.83 |
+| L4 | awq-int4 | 128 | 62.09 | 34.25 | 1.81 | 2,062 | 0.108 | 108.08 |
+| L4 | awq-int4 | 256 | 125.31 | 49.94 | 2.51 | 2,043 | 0.109 | 224.04 |
 | L4 | bf16 | 1 | 56.51 | 50.89 | 1.11 | 18 | 12.545 | 56.47 |
 | L4 | bf16 | 2 | 57.66 | 51.02 | 1.13 | 35 | 6.400 | 57.93 |
 | L4 | bf16 | 4 | 58.07 | 51.26 | 1.13 | 69 | 3.223 | 58.05 |
@@ -141,6 +201,69 @@ Each batch of 512-token prompts runs twice, with 64 and with 192 output tokens. 
 | L4 | bf16 | 16 | 60.86 | 52.73 | 1.15 | 263 | 0.844 | 60.65 |
 | L4 | bf16 | 32 | 67.37 | 54.69 | 1.23 | 475 | 0.467 | 76.59 |
 | L4 | bf16 | 64 | 75.03 | 58.61 | 1.28 | 853 | 0.260 | 89.36 |
+| L4 | fp8 | 1 | 34.45 | 29.14 | 1.18 | 29 | 7.648 | 34.48 |
+| L4 | fp8 | 2 | 34.64 | 29.26 | 1.18 | 58 | 3.845 | 34.90 |
+| L4 | fp8 | 4 | 34.81 | 29.51 | 1.18 | 115 | 1.932 | 34.96 |
+| L4 | fp8 | 8 | 35.68 | 30.00 | 1.19 | 224 | 0.990 | 35.67 |
+| L4 | fp8 | 16 | 36.83 | 30.98 | 1.19 | 434 | 0.511 | 37.11 |
+| L4 | fp8 | 32 | 40.82 | 32.94 | 1.24 | 784 | 0.283 | 44.86 |
+| L4 | fp8 | 64 | 49.69 | 36.86 | 1.35 | 1,288 | 0.172 | 59.86 |
+| L4 | fp8 | 128 | 63.72 | 44.70 | 1.43 | 2,009 | 0.111 | 90.78 |
+| L4 | fp8 | 256 | 96.46 | 60.39 | 1.60 | 2,654 | 0.084 | 167.09 |
+| A10G | awq-int4 | 1 | 10.77 | 9.35 | 1.15 | 93 | 3.290 | 10.74 |
+| A10G | awq-int4 | 2 | 10.76 | 9.41 | 1.14 | 186 | 1.644 | 11.06 |
+| A10G | awq-int4 | 4 | 11.02 | 9.53 | 1.16 | 363 | 0.842 | 10.98 |
+| A10G | awq-int4 | 8 | 11.49 | 9.77 | 1.18 | 696 | 0.439 | 11.41 |
+| A10G | awq-int4 | 16 | 12.49 | 10.26 | 1.22 | 1,281 | 0.239 | 12.49 |
+| A10G | awq-int4 | 32 | 14.80 | 11.24 | 1.32 | 2,162 | 0.141 | 22.97 |
+| A10G | awq-int4 | 64 | 24.70 | 13.21 | 1.87 | 2,591 | 0.118 | 37.61 |
+| A10G | awq-int4 | 128 | 45.93 | 26.33 | 1.74 | 2,787 | 0.110 | 77.27 |
+| A10G | awq-int4 | 256 | 90.14 | 52.65 | 1.71 | 2,840 | 0.108 | 165.59 |
+| A100-40GB | bf16 | 1 | 12.22 | 9.82 | 1.24 | 82 | 7.121 | 12.23 |
+| A100-40GB | bf16 | 2 | 12.02 | 9.84 | 1.22 | 166 | 3.504 | 12.05 |
+| A100-40GB | bf16 | 4 | 13.41 | 9.89 | 1.36 | 298 | 1.954 | 13.59 |
+| A100-40GB | bf16 | 8 | 12.36 | 9.98 | 1.24 | 647 | 0.901 | 12.36 |
+| A100-40GB | bf16 | 16 | 12.80 | 10.17 | 1.26 | 1,250 | 0.466 | 12.78 |
+| A100-40GB | bf16 | 32 | 13.83 | 10.55 | 1.31 | 2,314 | 0.252 | 15.85 |
+| A100-40GB | bf16 | 64 | 15.98 | 11.31 | 1.41 | 4,005 | 0.146 | 19.34 |
+| A100-40GB | bf16 | 128 | 18.45 | 12.82 | 1.44 | 6,936 | 0.084 | 26.64 |
+| A100-40GB | bf16 | 256 | 26.50 | 15.85 | 1.67 | 9,659 | 0.060 | 46.01 |
+| A100-80GB | awq-int4 | 1 | 4.76 | 2.75 | 1.73 | 210 | 3.307 | 4.82 |
+| A100-80GB | awq-int4 | 2 | 4.94 | 2.77 | 1.79 | 404 | 1.716 | 5.03 |
+| A100-80GB | awq-int4 | 4 | 4.92 | 2.80 | 1.75 | 813 | 0.853 | 4.95 |
+| A100-80GB | awq-int4 | 8 | 5.04 | 2.88 | 1.75 | 1,588 | 0.437 | 5.07 |
+| A100-80GB | awq-int4 | 16 | 5.79 | 3.02 | 1.92 | 2,762 | 0.251 | 5.75 |
+| A100-80GB | awq-int4 | 32 | 7.07 | 3.31 | 2.14 | 4,528 | 0.153 | 8.76 |
+| A100-80GB | awq-int4 | 64 | 11.31 | 3.89 | 2.91 | 5,659 | 0.123 | 14.47 |
+| A100-80GB | awq-int4 | 128 | 18.07 | 5.91 | 3.06 | 7,082 | 0.098 | 30.54 |
+| A100-80GB | awq-int4 | 256 | 32.99 | 11.81 | 2.79 | 7,759 | 0.089 | 60.44 |
+| H100 | awq-int4 | 1 | 4.25 | 1.67 | 2.54 | 235 | 4.662 | 4.30 |
+| H100 | awq-int4 | 2 | 4.39 | 1.68 | 2.60 | 456 | 2.407 | 4.35 |
+| H100 | awq-int4 | 4 | 4.36 | 1.71 | 2.55 | 918 | 1.196 | 4.37 |
+| H100 | awq-int4 | 8 | 4.43 | 1.75 | 2.53 | 1,806 | 0.607 | 4.45 |
+| H100 | awq-int4 | 16 | 4.46 | 1.84 | 2.42 | 3,591 | 0.305 | 4.59 |
+| H100 | awq-int4 | 32 | 4.93 | 2.01 | 2.45 | 6,494 | 0.169 | 4.96 |
+| H100 | awq-int4 | 64 | 5.88 | 2.37 | 2.49 | 10,889 | 0.101 | 6.90 |
+| H100 | awq-int4 | 128 | 7.37 | 3.07 | 2.40 | 17,379 | 0.063 | 11.27 |
+| H100 | awq-int4 | 256 | 11.60 | 4.47 | 2.59 | 22,074 | 0.050 | 18.50 |
+| H100 | bf16 | 1 | 6.14 | 4.56 | 1.35 | 163 | 6.732 | 6.18 |
+| H100 | bf16 | 2 | 6.32 | 4.57 | 1.38 | 317 | 3.464 | 6.21 |
+| H100 | bf16 | 4 | 6.24 | 4.59 | 1.36 | 641 | 1.711 | 6.28 |
+| H100 | bf16 | 8 | 6.34 | 4.63 | 1.37 | 1,261 | 0.870 | 6.39 |
+| H100 | bf16 | 16 | 6.55 | 4.72 | 1.39 | 2,443 | 0.449 | 6.53 |
+| H100 | bf16 | 32 | 6.66 | 4.90 | 1.36 | 4,803 | 0.228 | 6.68 |
+| H100 | bf16 | 64 | 7.38 | 5.25 | 1.41 | 8,674 | 0.126 | 8.22 |
+| H100 | bf16 | 128 | 8.59 | 5.95 | 1.44 | 14,900 | 0.074 | 12.08 |
+| H100 | bf16 | 256 | 11.59 | 7.36 | 1.58 | 22,080 | 0.050 | 17.76 |
+| H100 | fp8 | 1 | 4.21 | 2.61 | 1.61 | 238 | 4.615 | 4.25 |
+| H100 | fp8 | 2 | 4.28 | 2.62 | 1.63 | 467 | 2.347 | 4.29 |
+| H100 | fp8 | 4 | 4.37 | 2.64 | 1.65 | 915 | 1.199 | 4.38 |
+| H100 | fp8 | 8 | 4.37 | 2.69 | 1.63 | 1,831 | 0.599 | 4.40 |
+| H100 | fp8 | 16 | 4.43 | 2.77 | 1.60 | 3,615 | 0.303 | 4.52 |
+| H100 | fp8 | 32 | 5.02 | 2.95 | 1.70 | 6,376 | 0.172 | 5.04 |
+| H100 | fp8 | 64 | 5.40 | 3.30 | 1.64 | 11,841 | 0.093 | 6.05 |
+| H100 | fp8 | 128 | 6.73 | 4.00 | 1.68 | 19,016 | 0.058 | 8.85 |
+| H100 | fp8 | 256 | 9.74 | 5.41 | 1.80 | 26,296 | 0.042 | 14.41 |
 <!-- END GENERATED: measured_decode -->
 
 ## Development

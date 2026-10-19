@@ -1,0 +1,76 @@
+{
+  "cost_usd_upper_bound": 0.005837898284930553,
+  "finished_at": "2026-10-19T08:30:11+00:00",
+  "git_sha": "556613b1900d0bb72255afa31d48cc5e4d152202",
+  "github_run_url": "https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807",
+  "gpu": "A10G",
+  "gpu_call_s": 11.281464376000002,
+  "id": "007-a10g-micro",
+  "modal_gpu": "A10G",
+  "price_per_hour": 1.1,
+  "quant": "bf16",
+  "reached_modal": true,
+  "result": {
+    "gpu_info": {
+      "clocks.max.memory": "6251",
+      "clocks.max.sm": "1695",
+      "driver_version": "610.57.04",
+      "memory.total": "23028",
+      "name": "NVIDIA A10",
+      "power.limit": "150.00"
+    },
+    "micro": {
+      "bandwidth": {
+        "best": 485.7892006677063,
+        "best_ms": 4.420608043670654,
+        "bytes_per_iter": 2147483648,
+        "median": 484.4478446576805,
+        "median_ms": 4.43284797668457,
+        "unit": "GB/s"
+      },
+      "gemv_bandwidth": {
+        "best": 498.1173634518903,
+        "best_ms": 4.311200141906738,
+        "bytes_per_iter": 2147483648,
+        "median": 497.66303309825173,
+        "median_ms": 4.315135955810547,
+        "unit": "GB/s"
+      },
+      "matmul": {
+        "bf16": {
+          "best": 79.72540952689097,
+          "best_ms": 13.791232109069824,
+          "median": 77.36449627750092,
+          "median_ms": 14.212095737457275,
+          "n": 8192,
+          "unit": "TFLOPS"
+        },
+        "fp8": {
+          "error": "RuntimeError: torch._scaled_mm is only supported on CUDA devices with compute capability >= 9.0 or 8.9, or ROCm MI300+",
+          "n": 8192,
+          "unit": "TFLOPS"
+        },
+        "int8": {
+          "best": 147.79653180182547,
+          "best_ms": 7.43936014175415,
+          "median": 147.3503290151525,
+          "median_ms": 7.461887836456299,
+          "n": 8192,
+          "unit": "TFLOPS"
+        }
+      },
+      "torch_info": {
+        "compute_capability": "8.6",
+        "cuda_version": "13.0",
+        "sm_count": 72,
+        "torch_name": "NVIDIA A10",
+        "torch_version": "2.13.0+cu130",
+        "total_memory_bytes": 23684186112
+      }
+    }
+  },
+  "started_at": "2026-10-19T08:29:53+00:00",
+  "status": "ok",
+  "suite": "micro",
+  "wall_s": 17.368953574999992
+}

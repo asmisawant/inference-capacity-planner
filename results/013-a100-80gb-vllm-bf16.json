@@ -1,0 +1,17 @@
+{
+  "cost_usd_upper_bound": 0.010713954597880606,
+  "error": "ResourceExhaustedError: App create rate limit exceeded. Please wait and retry.",
+  "finished_at": "2026-10-19T08:30:47+00:00",
+  "git_sha": "556613b1900d0bb72255afa31d48cc5e4d152202",
+  "github_run_url": "https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807",
+  "gpu": "A100-80GB",
+  "id": "013-a100-80gb-vllm-bf16",
+  "modal_gpu": "A100-80GB",
+  "price_per_hour": 2.4984,
+  "quant": "bf16",
+  "reached_modal": false,
+  "started_at": "2026-10-19T08:30:33+00:00",
+  "status": "error",
+  "suite": "vllm",
+  "wall_s": 14.034522659000004
+}

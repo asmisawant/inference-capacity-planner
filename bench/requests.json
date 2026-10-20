@@ -395,6 +395,72 @@
       "gpu": "L4",
       "suite": "sglang",
       "quant": "bf16"
+    },
+    {
+      "id": "050-a10g-sglang-bf16",
+      "gpu": "A10G",
+      "suite": "sglang",
+      "quant": "bf16"
+    },
+    {
+      "id": "051-a100-40gb-sglang-bf16",
+      "gpu": "A100-40GB",
+      "suite": "sglang",
+      "quant": "bf16"
+    },
+    {
+      "id": "052-a100-80gb-sglang-bf16",
+      "gpu": "A100-80GB",
+      "suite": "sglang",
+      "quant": "bf16"
+    },
+    {
+      "id": "053-h100-sglang-bf16",
+      "gpu": "H100",
+      "suite": "sglang",
+      "quant": "bf16"
+    },
+    {
+      "id": "054-l4-sglang-fp8",
+      "gpu": "L4",
+      "suite": "sglang",
+      "quant": "fp8"
+    },
+    {
+      "id": "055-a100-80gb-sglang-fp8",
+      "gpu": "A100-80GB",
+      "suite": "sglang",
+      "quant": "fp8"
+    },
+    {
+      "id": "056-h100-sglang-fp8",
+      "gpu": "H100",
+      "suite": "sglang",
+      "quant": "fp8"
+    },
+    {
+      "id": "057-l4-sglang-awq-int4",
+      "gpu": "L4",
+      "suite": "sglang",
+      "quant": "awq-int4"
+    },
+    {
+      "id": "058-a10g-sglang-awq-int4",
+      "gpu": "A10G",
+      "suite": "sglang",
+      "quant": "awq-int4"
+    },
+    {
+      "id": "059-a100-80gb-sglang-awq-int4",
+      "gpu": "A100-80GB",
+      "suite": "sglang",
+      "quant": "awq-int4"
+    },
+    {
+      "id": "060-h100-sglang-awq-int4",
+      "gpu": "H100",
+      "suite": "sglang",
+      "quant": "awq-int4"
     }
   ]
 }

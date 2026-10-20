@@ -27,10 +27,11 @@ REQUESTS = ROOT / "bench" / "requests.json"
 RESULTS = ROOT / "results"
 LEDGER = RESULTS / "ledger.jsonl"
 
-SUITES = ("micro", "vllm", "serve", "sglang")
+SUITES = ("micro", "vllm", "serve", "sglang", "sglang-serve")
+SERVE_SUITES = ("serve", "sglang-serve")
 QUANTS = ("bf16", "fp8", "awq-int4")
 # Modal container timeout per suite. Also the worst-case billable time we budget for.
-TIMEOUT_MIN = {"micro": 15, "vllm": 30, "serve": 30, "sglang": 30}
+TIMEOUT_MIN = {"micro": 15, "vllm": 30, "serve": 30, "sglang": 30, "sglang-serve": 30}
 # Modal also bills CPU and RAM alongside the GPU; budget a margin for it.
 NON_GPU_MARGIN = 1.10
 
@@ -65,8 +66,8 @@ class Run:
             raise ValueError(f"run {self.id}: tp > 1 needs an NVLink GPU and a model suite")
         if not self.id or "/" in self.id or " " in self.id:
             raise ValueError(f"bad run id {self.id!r}")
-        if (self.suite == "serve") != (self.serve is not None):
-            raise ValueError(f"run {self.id}: 'serve' parameters go with (and only with) the serve suite")
+        if (self.suite in SERVE_SUITES) != (self.serve is not None):
+            raise ValueError(f"run {self.id}: 'serve' parameters go with (and only with) a serve suite")
         if self.serve is not None:
             need = {"prompt", "output", "rps", "max_num_seqs"}
             if set(self.serve) != need or min(self.serve.values()) <= 0:

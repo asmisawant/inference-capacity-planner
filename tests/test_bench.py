@@ -162,3 +162,12 @@ def test_sglang_suite():
     assert sglang_bench.DECODE_BATCHES == vllm_bench.DECODE_BATCHES
     prompts = sglang_bench.random_prompts(3, 10, vocab=49_155)
     assert len(prompts) == 3 and all(len(p) == 10 and max(p) < 49_155 for p in prompts)
+
+
+def test_sglang_serve_suite_needs_serve_parameters():
+    serve = {"prompt": 1024, "output": 256, "rps": 2.0, "max_num_seqs": 32}
+    assert runs.Run(id="x", gpu="H100", suite="sglang-serve", serve=serve).timeout_min == 30
+    with pytest.raises(ValueError, match="serve"):
+        runs.Run(id="x", gpu="H100", suite="sglang-serve")
+    with pytest.raises(ValueError, match="serve"):
+        runs.Run(id="x", gpu="H100", suite="sglang", serve=serve)

@@ -171,22 +171,31 @@ class SGLangBench:
         self, suite: str, quant: str, revision: str | None = None, serve: dict | None = None,
         model: str | None = None, tp: int = 1,
     ) -> dict:
-        """The sglang suite: bench.sglang_bench on SGLang's image. Plain JSON out, as Bench.run."""
+        """The sglang suites on SGLang's image: offline (bench.sglang_bench) and serve
+        (bench.serve_bench --engine sglang). Plain JSON out, as Bench.run."""
         import traceback
 
         from bench import micro
         from capacity_planner.models import DEFAULT_MODEL
 
         try:
-            if suite != "sglang":
-                raise ValueError(f"SGLangBench runs only the sglang suite, not {suite!r}")
             info = micro.gpu_info()
             args = ["--quant", quant, "--model", model or DEFAULT_MODEL, "--tp", str(tp)]
             args += ["--revision", revision] if revision else []
-            rc, log, result = run_child("bench.sglang_bench", args)
+            if suite == "sglang":
+                module, key = "bench.sglang_bench", "sglang"
+            elif suite == "sglang-serve":
+                module, key = "bench.serve_bench", "serve"
+                args += [
+                    "--engine", "sglang", "--max-num-seqs", str(serve["max_num_seqs"]), "--prompt", str(serve["prompt"]),
+                    "--output", str(serve["output"]), "--rps", str(serve["rps"]),
+                ]
+            else:
+                raise ValueError(f"SGLangBench runs the sglang suites, not {suite!r}")
+            rc, log, result = run_child(module, args)
             if rc != 0:
                 tail = "".join(log.splitlines(keepends=True)[-40:])
-                raise RuntimeError(f"sglang_bench exited {rc}; last log lines:\n{tail}")
-            return json.loads(json.dumps({"gpu_info": info, "sglang": result}, default=str))
+                raise RuntimeError(f"{module} exited {rc}; last log lines:\n{tail}")
+            return json.loads(json.dumps({"gpu_info": info, key: result}, default=str))
         except Exception as e:
             return {"remote_error": f"{type(e).__name__}: {e}", "traceback": traceback.format_exc()}

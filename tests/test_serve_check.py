@@ -1,3 +1,5 @@
+import pytest
+
 from capacity_planner import serve_check as sc
 from capacity_planner.recommend import recommend, serve_calibration
 from capacity_planner.transfer import candidate_configs
@@ -7,9 +9,10 @@ def test_frozen_predictions_cover_targets_and_meet_targets():
     """Every target was frozen, and as the recommender's answer it met the TTFT target
     (p90 x margin) when frozen. The file is not compared with the current code, which may
     change after the runs."""
-    preds = sc.load_predictions()
-    assert set(preds) == {t.key for t in sc.TARGETS}
-    for p in preds.values():
+    for targets, path in sc.SETS.values():
+        preds = sc.load_predictions(path)
+        assert set(preds) == {t.key for t in targets}
+    for p in [*sc.load_predictions().values(), *sc.load_predictions(sc.MARGIN_CHECK_PREDICTIONS).values()]:
         assert p["ttft_p90_s"] * p["ttft_margin"] <= p["slo"]["ttft_p90_s"]
         assert p["tpot_s"] <= p["slo"]["tpot_s"]
 
@@ -21,6 +24,11 @@ def test_predictions_are_the_recommenders_answer():
     rec = next(r for r in recs if (r.gpu, r.quant, r.gpus_per_replica) == (t.gpu, t.quant, t.tp))
     p = sc.serve_prediction(t)
     assert rec.replicas == p["replicas"] and rec.max_num_seqs == p["serve"]["max_num_seqs"]
+
+
+def test_write_refuses_to_overwrite():
+    with pytest.raises(SystemExit, match="frozen"):
+        sc.main(["--set", "step5", "--write"])
 
 
 def test_comparison_table():
@@ -36,6 +44,7 @@ def test_comparison_table():
     }
     t = sc.comparison_table([run], {"k": p})
     assert "(-50%)" in t and "[s1]" in t
+    assert "| **no** |" in t  # p90 x margin doesn't cover twice the predicted p90
     assert "**no**" in t  # measured p90 at twice the prediction misses the 500 ms target
     # A run with a different load is not this prediction's measurement.
     other = {**run, "serve": {**p["serve"], "rps": 1.0}}

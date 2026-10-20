@@ -24,7 +24,8 @@ from .recommend import EXAMPLES, Workload, evaluate, predict, serve_calibration
 from .transfer import candidate_configs
 from .validation import load_results
 
-PREDICTIONS = Path(__file__).resolve().parents[2] / "predictions" / "serve.json"
+PREDICTIONS_DIR = Path(__file__).resolve().parents[2] / "predictions"
+PREDICTIONS = PREDICTIONS_DIR / "serve.json"
 WORKLOADS = dict(EXAMPLES)
 
 
@@ -50,6 +51,15 @@ TARGETS = (
     ServeTarget("Qwen2.5-32B-Instruct", "Chat assistant", "H100", "fp8"),
     ServeTarget("Qwen2.5-32B-Instruct", "Long-context interactive", "H100", "fp8", tp=2),  # transferred
 )
+
+
+# After step 5 the per-GPU p90 margins learn from every model's serve runs (H100: x1.00
+# -> x1.28). One run the margin wasn't fitted on checks it: Qwen-32B on a single H100 at a
+# workload where p90 x margin lands just under the target.
+MARGIN_CHECK = (ServeTarget("Qwen2.5-32B-Instruct", "Long-context interactive", "H100", "fp8"),)
+MARGIN_CHECK_PREDICTIONS = PREDICTIONS_DIR / "serve-h100-margin.json"
+
+SETS = {"step5": (TARGETS, PREDICTIONS), "h100-margin": (MARGIN_CHECK, MARGIN_CHECK_PREDICTIONS)}
 
 
 def serve_prediction(t: ServeTarget, results: list[dict] | None = None) -> dict:
@@ -119,8 +129,8 @@ def comparison_table(results: list[dict] | None = None, preds: dict | None = Non
     rows = [
         "| Model | Workload | Replica | Curves | Load per replica (req/s, max_num_seqs) "
         "| TTFT ms p50: predicted / measured | TTFT ms p90: predicted / measured (error) "
-        "| p90 × margin vs target | TPOT ms: predicted / measured (target) | Targets met | Run |",
-        "|---|---|---|---|---|---:|---:|---|---:|---|---|",
+        "| p90 × margin vs target | Margin covers measured p90 | TPOT ms: predicted / measured (target) | Targets met | Run |",
+        "|---|---|---|---|---|---:|---:|---|---|---:|---|---|",
     ]
     p50_errs, p90_errs, tpot_errs = [], [], []
     for p in preds.values():
@@ -136,7 +146,7 @@ def comparison_table(results: list[dict] | None = None, preds: dict | None = Non
         if r is None:
             rows.append(
                 head + f"| {p['ttft_p50_s'] * 1e3:.0f} / – | {p['ttft_p90_s'] * 1e3:.0f} / – "
-                f"| {safe * 1e3:.0f} vs {slo_ttft * 1e3:.0f} | {p['tpot_s'] * 1e3:.1f} / – ({slo_tpot * 1e3:.0f}) "
+                f"| {safe * 1e3:.0f} vs {slo_ttft * 1e3:.0f} | – | {p['tpot_s'] * 1e3:.1f} / – ({slo_tpot * 1e3:.0f}) "
                 f"| – | not run yet |"
             )
             continue
@@ -149,7 +159,7 @@ def comparison_table(results: list[dict] | None = None, preds: dict | None = Non
         rows.append(
             head + f"| {p['ttft_p50_s'] * 1e3:.0f} / {m50 * 1e3:.0f} "
             f"| {p['ttft_p90_s'] * 1e3:.0f} / {m90 * 1e3:.0f} ({_err(p['ttft_p90_s'], m90)}) "
-            f"| {safe * 1e3:.0f} vs {slo_ttft * 1e3:.0f} "
+            f"| {safe * 1e3:.0f} vs {slo_ttft * 1e3:.0f} | {'yes' if safe >= m90 else '**no**'} "
             f"| {p['tpot_s'] * 1e3:.1f} / {mtpot * 1e3:.1f} ({slo_tpot * 1e3:.0f}) "
             f"| {met} | [{r['id']}]({r['github_run_url']}) |"
         )
@@ -165,14 +175,16 @@ def comparison_table(results: list[dict] | None = None, preds: dict | None = Non
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--write", type=Path, help="freeze predictions for TARGETS to this file")
+    ap.add_argument("--set", choices=sorted(SETS), default="step5")
+    ap.add_argument("--write", action="store_true", help="freeze this set's predictions to its file")
     args = ap.parse_args(argv)
-    data = predictions()
+    targets, path = SETS[args.set]
+    data = predictions(targets)
     if args.write:
-        if args.write.exists():
-            raise SystemExit(f"{args.write} exists; predictions are frozen once committed")
-        args.write.parent.mkdir(parents=True, exist_ok=True)
-        args.write.write_text(json.dumps(data, indent=2) + "\n")
+        if path.exists():
+            raise SystemExit(f"{path} exists; predictions are frozen once committed")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, indent=2) + "\n")
     for k, p in data["predictions"].items():
         print(
             f"{k}: {p['replicas']} replicas; one at {p['serve']} -> TTFT p50 {p['ttft_p50_s'] * 1e3:.0f} ms, "

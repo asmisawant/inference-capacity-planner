@@ -534,13 +534,13 @@ reads only that file. "Targets met" means the measured p90 TTFT and median TPOT 
 the workload's targets.
 
 <!-- BEGIN GENERATED: serve_check -->
-| Model | Workload | Replica | Curves | Load per replica (req/s, max_num_seqs) | TTFT ms p50: predicted / measured | TTFT ms p90: predicted / measured (error) | p90 × margin vs target | TPOT ms: predicted / measured (target) | Targets met | Run |
-|---|---|---|---|---|---:|---:|---|---:|---|---|
-| Granite-3.1-8B-Instruct | Chat assistant (1 replica) | A100-40GB bf16 | 034-a100-40gb-vllm-granite8b-bf16 | 5, 73 | 157 / 215 | 337 / 364 (-7%) | 337 vs 500 | 39.3 / 38.9 (50) | yes | [041-a100-40gb-serve-granite8b-bf16-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
-| Granite-3.1-8B-Instruct | Chat assistant (1 replica) | A100-80GB bf16 | predicted from 013-a100-80gb-vllm-bf16 | 5, 82 | 139 / 170 | 290 / 316 (-8%) | 309 vs 500 | 27.7 / 30.0 (50) | yes | [042-a100-80gb-serve-granite8b-bf16-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
-| Granite-3.1-8B-Instruct | Long-context interactive (2 replicas) | H100 fp8 | 036-h100-vllm-granite8b-fp8 | 10, 80 | 105 / 113 | 219 / 181 (+21%) | 219 vs 300 | 25.2 / 19.3 (30) | yes | [043-h100-serve-granite8b-fp8-longctx](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
-| Qwen2.5-32B-Instruct | Chat assistant (1 replica) | H100 fp8 | 037-h100-vllm-qwen32b-fp8 | 5, 86 | 134 / 188 | 260 / 345 (-25%) | 260 vs 500 | 32.1 / 33.7 (50) | yes | [044-h100-serve-qwen32b-fp8-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
-| Qwen2.5-32B-Instruct | Long-context interactive (5 replicas) | 2× H100 fp8 | predicted from 017-h100-vllm-fp8 | 4, 44 | 138 / 151 | 249 / 325 (-23%) | 249 vs 300 | 17.0 / 20.3 (30) | **no** | [045-h100x2-serve-qwen32b-fp8-longctx](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
+| Model | Workload | Replica | Curves | Load per replica (req/s, max_num_seqs) | TTFT ms p50: predicted / measured | TTFT ms p90: predicted / measured (error) | p90 × margin vs target | Margin covers measured p90 | TPOT ms: predicted / measured (target) | Targets met | Run |
+|---|---|---|---|---|---:|---:|---|---|---:|---|---|
+| Granite-3.1-8B-Instruct | Chat assistant (1 replica) | A100-40GB bf16 | 034-a100-40gb-vllm-granite8b-bf16 | 5, 73 | 157 / 215 | 337 / 364 (-7%) | 337 vs 500 | **no** | 39.3 / 38.9 (50) | yes | [041-a100-40gb-serve-granite8b-bf16-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
+| Granite-3.1-8B-Instruct | Chat assistant (1 replica) | A100-80GB bf16 | predicted from 013-a100-80gb-vllm-bf16 | 5, 82 | 139 / 170 | 290 / 316 (-8%) | 309 vs 500 | **no** | 27.7 / 30.0 (50) | yes | [042-a100-80gb-serve-granite8b-bf16-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
+| Granite-3.1-8B-Instruct | Long-context interactive (2 replicas) | H100 fp8 | 036-h100-vllm-granite8b-fp8 | 10, 80 | 105 / 113 | 219 / 181 (+21%) | 219 vs 300 | yes | 25.2 / 19.3 (30) | yes | [043-h100-serve-granite8b-fp8-longctx](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
+| Qwen2.5-32B-Instruct | Chat assistant (1 replica) | H100 fp8 | 037-h100-vllm-qwen32b-fp8 | 5, 86 | 134 / 188 | 260 / 345 (-25%) | 260 vs 500 | **no** | 32.1 / 33.7 (50) | yes | [044-h100-serve-qwen32b-fp8-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
+| Qwen2.5-32B-Instruct | Long-context interactive (5 replicas) | 2× H100 fp8 | predicted from 017-h100-vllm-fp8 | 4, 44 | 138 / 151 | 249 / 325 (-23%) | 249 vs 300 | **no** | 17.0 / 20.3 (30) | **no** | [045-h100x2-serve-qwen32b-fp8-longctx](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
 
 Over 5 runs, the median |error| is 18% for p50 TTFT, 21% for p90 TTFT and 8% for TPOT.
 <!-- END GENERATED: serve_check -->
@@ -560,6 +560,18 @@ What the five runs (041–045) show:
   H100 margin rises accordingly (see the margin table above). For the README's
   example workloads, this changes only the failed case, which now gets one more replica.
   The frozen table above still shows the predictions as they were before the runs.
+
+**Checking the new H100 margin.** The ×1.28 H100 margin was fitted on runs that included
+the two that exposed the problem, so it needs a run it wasn't fitted on. That run is
+Qwen-32B on a single H100 (FP8) at the long-context workload. It is a setup and workload
+not load-tested before, where the margined p90 lands just under the 300 ms target. Its
+prediction was frozen in `predictions/serve-h100-margin.json` before the run.
+
+<!-- BEGIN GENERATED: serve_margin_check -->
+| Model | Workload | Replica | Curves | Load per replica (req/s, max_num_seqs) | TTFT ms p50: predicted / measured | TTFT ms p90: predicted / measured (error) | p90 × margin vs target | Margin covers measured p90 | TPOT ms: predicted / measured (target) | Targets met | Run |
+|---|---|---|---|---|---:|---:|---|---|---:|---|---|
+| Qwen2.5-32B-Instruct | Long-context interactive (21 replicas) | H100 fp8 | 037-h100-vllm-qwen32b-fp8 | 0.952, 20 | 199 / – | 229 / – | 295 vs 300 | – | 18.5 / – (30) | – | not run yet |
+<!-- END GENERATED: serve_margin_check -->
 
 ## Development
 

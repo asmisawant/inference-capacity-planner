@@ -1,0 +1,31 @@
+{
+  "method": "capacity_planner.serve_check: recommender output for one replica at its share of the load",
+  "serving_overhead_s": 0.04226808802232897,
+  "predictions": {
+    "Qwen2.5-32B-Instruct|Long-context interactive|H100|fp8|tp1": {
+      "model": "Qwen2.5-32B-Instruct",
+      "gpu": "H100",
+      "quant": "fp8",
+      "tp": 1,
+      "workload": "Long-context interactive",
+      "slo": {
+        "ttft_p90_s": 0.3,
+        "tpot_s": 0.03
+      },
+      "total_rps": 20,
+      "replicas": 21,
+      "curves": "037-h100-vllm-qwen32b-fp8",
+      "serve": {
+        "prompt": 2048,
+        "output": 256,
+        "rps": 0.952,
+        "max_num_seqs": 20
+      },
+      "ttft_p50_s": 0.19913766978150055,
+      "ttft_p90_s": 0.2294304788262701,
+      "ttft_margin": 1.284728134771238,
+      "tpot_s": 0.018475410166265676,
+      "busy_batch": 5
+    }
+  }
+}

@@ -38,16 +38,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--gpu", required=True)
     ap.add_argument("--suite", required=True)
     ap.add_argument("--quant", default="bf16")
+    ap.add_argument("--model", default=None)
+    ap.add_argument("--tp", type=int, default=1)
     ap.add_argument("--timeout-min", type=int, required=True)
     ap.add_argument("--serve", default="null", help="JSON serve parameters (serve suite)")
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args(argv)
-    run = Run(id=args.id, gpu=args.gpu, suite=args.suite, quant=args.quant, serve=json.loads(args.serve))
+    model = {"model": args.model} if args.model else {}
+    run = Run(id=args.id, gpu=args.gpu, suite=args.suite, quant=args.quant, tp=args.tp,
+              serve=json.loads(args.serve), **model)
 
     import modal
 
     from bench.modal_app import Bench, app, download
-    from bench.vllm_bench import MODELS
+    from bench.vllm_bench import hf_model
 
     gh = os.environ
     record = {
@@ -55,9 +59,11 @@ def main(argv: list[str] | None = None) -> int:
         "gpu": run.gpu,
         "suite": run.suite,
         "quant": run.quant,
+        "model": run.model,
+        "tp": run.tp,
         "serve": run.serve,
-        "modal_gpu": GPUS[run.gpu].modal_gpu,
-        "price_per_hour": GPUS[run.gpu].price_per_hour,
+        "modal_gpu": run.modal_gpu,
+        "price_per_hour": GPUS[run.gpu].price_per_hour * run.tp,
         "git_sha": subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip(),
         "github_run_url": (
             f"{gh['GITHUB_SERVER_URL']}/{gh['GITHUB_REPOSITORY']}/actions/runs/{gh['GITHUB_RUN_ID']}"
@@ -79,11 +85,11 @@ def main(argv: list[str] | None = None) -> int:
                 record["reached_modal"] = True
                 revision = None
                 if run.suite in ("vllm", "serve"):
-                    revision = download.remote(MODELS[run.quant][0])
+                    revision = download.remote(hf_model(run.model, run.quant)[0])
                     record["model_revision"] = revision
                 gpu_t0 = time.monotonic()
-                bench = Bench.with_options(gpu=GPUS[run.gpu].modal_gpu, timeout=run.timeout_min * 60)()
-                record["result"] = bench.run.remote(run.suite, run.quant, revision, run.serve)
+                bench = Bench.with_options(gpu=run.modal_gpu, timeout=run.timeout_min * 60)()
+                record["result"] = bench.run.remote(run.suite, run.quant, revision, run.serve, run.model, run.tp)
                 record["gpu_call_s"] = time.monotonic() - gpu_t0
             if "remote_error" in record["result"]:
                 print(record["result"]["traceback"])
@@ -107,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
             break
     record["start_attempts"] = attempt
     record["wall_s"] = time.monotonic() - t0
-    record["cost_usd_upper_bound"] = cost_usd(run.gpu, record["wall_s"])
+    record["cost_usd_upper_bound"] = cost_usd(run.gpu, record["wall_s"], run.tp)
     record["finished_at"] = _now()
 
     args.out.parent.mkdir(parents=True, exist_ok=True)

@@ -77,13 +77,15 @@ def _interp(xs: list[float], ys: list[float], x: float) -> float:
 
 @dataclass
 class MeasuredConfig:
-    """One (GPU, quant) that vLLM ran successfully, with its measured curves."""
+    """One (GPU, quant, tp) that vLLM ran successfully, with its measured curves."""
 
     gpu: GPUSpec
     quant: rf.Quantization
     model: ModelSpec
     eff: rf.Efficiency
     run: dict
+    tp: int = 1
+    predicted = False  # see transfer.TransferredConfig
 
     def __post_init__(self):
         v = self.run["result"]["vllm"]
@@ -102,15 +104,19 @@ class MeasuredConfig:
         self.compile_fallback = bool(v.get("compile_fallback"))
 
     @property
-    def key(self) -> tuple[str, str]:
-        return self.gpu.name, self.quant.name
+    def key(self) -> tuple[str, str, int]:
+        return self.gpu.name, self.quant.name, self.tp
+
+    @property
+    def source(self) -> str:
+        return self.run["id"]
 
     @property
     def max_measured_batch(self) -> int:
         return int(self._dec_b[-1])
 
     def _roof_ttft(self, p: float) -> float:
-        return rf.ttft_s(self.gpu, self.model, self.quant, max(1, round(p)), eff=self.eff)
+        return rf.ttft_s(self.gpu, self.model, self.quant, max(1, round(p)), eff=self.eff, tp=self.tp)
 
     def ttft_s(self, prompt_len: int) -> float:
         """Idle-engine TTFT: measured curve, roofline-shaped outside the measured range."""
@@ -130,24 +136,33 @@ class MeasuredConfig:
             raise ValueError(f"batch {batch} outside measured range 1..{self.max_measured_batch}")
         at_measured_ctx = _interp(self._dec_b, self._dec_s, float(batch))
         scale = (
-            rf.decode_step(self.gpu, self.model, self.quant, batch, context_len, eff=self.eff).time_s
-            / rf.decode_step(self.gpu, self.model, self.quant, batch, self.decode_context_len, eff=self.eff).time_s
+            rf.decode_step(self.gpu, self.model, self.quant, batch, context_len, eff=self.eff, tp=self.tp).time_s
+            / rf.decode_step(
+                self.gpu, self.model, self.quant, batch, self.decode_context_len, eff=self.eff, tp=self.tp
+            ).time_s
         )
         return at_measured_ctx * scale
 
 
-def measured_configs(results: list[dict] | None = None, model: ModelSpec | None = None) -> list[MeasuredConfig]:
+TP_DEGREES = (1, 2, 4, 8)
+
+
+def measured_configs(
+    results: list[dict] | None = None, model: ModelSpec | None = None, tps: tuple[int, ...] = (1,)
+) -> list[MeasuredConfig]:
+    """Configs vLLM ran for `model`. Single-GPU only by default (what the fits use)."""
     results = load_results() if results is None else results
     model = load_model() if model is None else model
     eff = gpu_efficiency(results)
     out = []
-    for (gpu, quant), r in latest(results, "vllm").items():
-        if gpu not in eff:
-            continue
-        try:
-            out.append(MeasuredConfig(GPUS[gpu], rf.QUANTIZATIONS[quant], model, eff[gpu], r))
-        except ValueError:
-            continue  # e.g. a run from before the decode-step measurement
+    for tp in tps:
+        for (gpu, quant), r in latest(results, "vllm", model.name, tp).items():
+            if gpu not in eff:
+                continue
+            try:
+                out.append(MeasuredConfig(GPUS[gpu], rf.QUANTIZATIONS[quant], model, eff[gpu], r, tp))
+            except ValueError:
+                continue  # e.g. a run from before the decode-step measurement
     return out
 
 
@@ -160,7 +175,10 @@ def fits(results: list[dict] | None = None, model: ModelSpec | None = None) -> l
         c0, c1 = _lsq2(xt, yt)
         ds = [d for d in v["decode"] if "decode_step_s" in d]
         xd = [
-            (rf.decode_step(c.gpu, c.model, c.quant, d["batch"], d["decode_context_len"], eff=c.eff).time_s, d["batch"])
+            (
+                rf.decode_step(c.gpu, c.model, c.quant, d["batch"], d["decode_context_len"], eff=c.eff, tp=c.tp).time_s,
+                d["batch"],
+            )
             for d in ds
         ]
         yd = [d["decode_step_s"] for d in ds]

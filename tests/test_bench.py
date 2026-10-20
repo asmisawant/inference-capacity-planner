@@ -114,3 +114,39 @@ def test_collect_records_a_retry_of_a_run_that_never_reached_modal(tmp_path):
     assert [(e["status"], e["reached_modal"]) for e in ledger] == [("error", False), ("ok", True)]
     # Now final: a further collect of the same id is ignored.
     assert runs.collect(out, res) == []
+
+
+def test_model_and_tp_runs():
+    r = runs.Run(id="g", gpu="H100", suite="vllm", quant="bf16", model="Qwen2.5-32B-Instruct", tp=2)
+    assert r.modal_gpu == "H100!:2"
+    assert r.worst_case_usd == pytest.approx(2 * _run(gpu="H100").worst_case_usd)
+    assert _run(gpu="H100").modal_gpu == "H100!"
+    with pytest.raises(ValueError, match="unknown model"):
+        runs.Run(id="x", gpu="L4", suite="vllm", model="Llama-9000")
+    with pytest.raises(ValueError, match="AWQ"):
+        runs.Run(id="x", gpu="L4", suite="vllm", quant="awq-int4", model="Granite-3.1-8B-Instruct")
+    with pytest.raises(ValueError, match="NVLink"):
+        runs.Run(id="x", gpu="L4", suite="vllm", tp=2)
+    with pytest.raises(ValueError, match="tp"):
+        runs.Run(id="x", gpu="H100", suite="vllm", tp=0)
+
+
+def test_hf_model_mapping():
+    from bench.vllm_bench import hf_model
+
+    assert hf_model("Qwen2.5-7B-Instruct", "bf16") == ("Qwen/Qwen2.5-7B-Instruct", None)
+    assert hf_model("Granite-3.1-8B-Instruct", "fp8") == ("ibm-granite/granite-3.1-8b-instruct", "fp8")
+    assert hf_model("Qwen2.5-32B-Instruct", "awq-int4") == ("Qwen/Qwen2.5-32B-Instruct-AWQ", None)
+    with pytest.raises(ValueError):
+        hf_model("Granite-3.1-8B-Instruct", "awq-int4")
+
+
+def test_collect_records_model_and_tp(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    base = {"suite": "vllm", "quant": "bf16", "status": "ok", "wall_s": 1.0, "cost_usd_upper_bound": 0.01,
+            "finished_at": "2026-10-19T00:00:00+00:00"}
+    (out / "old.json").write_text(json.dumps({**base, "id": "old", "gpu": "L4"}))
+    (out / "new.json").write_text(json.dumps({**base, "id": "new", "gpu": "H100", "model": "Qwen2.5-32B-Instruct", "tp": 2}))
+    got = {e["id"]: (e["model"], e["tp"]) for e in runs.collect(out, tmp_path / "res")}
+    assert got == {"old": ("Qwen2.5-7B-Instruct", 1), "new": ("Qwen2.5-32B-Instruct", 2)}

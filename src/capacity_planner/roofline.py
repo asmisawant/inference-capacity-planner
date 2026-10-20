@@ -64,10 +64,11 @@ class PhaseEstimate:
     bytes: float
     compute_s: float
     memory_s: float
+    comm_s: float = 0.0  # tensor-parallel all-reduces, not overlapped with compute
 
     @property
     def time_s(self) -> float:
-        return max(self.compute_s, self.memory_s)
+        return max(self.compute_s, self.memory_s) + self.comm_s
 
     @property
     def bound(self) -> str:
@@ -102,10 +103,12 @@ def kv_cache_bytes_available(
     quant: Quantization,
     gpu_memory_utilization: float = DEFAULT_GPU_MEMORY_UTILIZATION,
     overhead_gib: float = 0.0,
+    tp: int = 1,
 ) -> float:
-    """Memory left for KV cache: budget minus weights minus runtime overhead. Can be negative."""
+    """Per-GPU memory left for KV cache: budget minus this GPU's share of the weights
+    minus runtime overhead. Can be negative."""
     budget = gpu.memory_bytes * gpu_memory_utilization
-    return budget - weight_bytes(model, quant) - overhead_gib * 2**30
+    return budget - weight_bytes(model, quant) / tp - overhead_gib * 2**30
 
 
 def kv_cache_capacity_tokens(
@@ -115,10 +118,13 @@ def kv_cache_capacity_tokens(
     kv_dtype: str = "bf16",
     gpu_memory_utilization: float = DEFAULT_GPU_MEMORY_UTILIZATION,
     overhead_gib: float = 0.0,
+    tp: int = 1,
 ) -> int:
-    """How many tokens of KV cache fit. 0 if the weights alone don't fit."""
-    free = kv_cache_bytes_available(gpu, model, quant, gpu_memory_utilization, overhead_gib)
-    return max(0, int(free // model.kv_bytes_per_token(kv_dtype)))
+    """How many tokens of KV cache fit (each GPU holds its heads' share of every token).
+    0 if the weights alone don't fit."""
+    _check_tp(gpu, tp)
+    free = kv_cache_bytes_available(gpu, model, quant, gpu_memory_utilization, overhead_gib, tp)
+    return max(0, int(free // model.kv_bytes_per_token(kv_dtype, tp)))
 
 
 def max_concurrent_sequences(kv_capacity_tokens: int, tokens_per_sequence: int) -> int:
@@ -128,6 +134,25 @@ def max_concurrent_sequences(kv_capacity_tokens: int, tokens_per_sequence: int) 
     return kv_capacity_tokens // tokens_per_sequence
 
 
+def _check_tp(gpu: GPUSpec, tp: int) -> None:
+    if tp < 1:
+        raise ValueError("tp must be >= 1")
+    if tp > 1 and gpu.nvlink_gbs is None:
+        raise ValueError(f"{gpu.name} has no NVLink; tensor parallelism isn't modelled on it")
+
+
+def allreduce_s(gpu: GPUSpec, model: ModelSpec, tokens: int, tp: int) -> float:
+    """Megatron-style TP: two all-reduces per layer (after attention and after the MLP)
+    of tokens x hidden BF16 activations. A ring all-reduce sends 2 (tp-1)/tp of the
+    buffer over each GPU's link. Latency per call is not modelled."""
+    if tp == 1:
+        return 0.0
+    _check_tp(gpu, tp)
+    buf = tokens * model.hidden_size * 2
+    per_call = 2 * (tp - 1) / tp * buf / (gpu.nvlink_gbs * 1e9)
+    return 2 * model.num_layers * per_call
+
+
 def _phase(
     gpu: GPUSpec,
     quant: Quantization,
@@ -135,12 +160,13 @@ def _phase(
     attention_flops: float,
     bytes_moved: float,
     eff: Efficiency,
+    comm_s: float = 0.0,
 ) -> PhaseEstimate:
     linear_peak = gpu.peak_ops_per_s(effective_compute_dtype(gpu, quant)) * eff.compute
     attn_peak = gpu.peak_ops_per_s("bf16") * eff.compute  # attention runs in bf16
     compute_s = linear_flops / linear_peak + attention_flops / attn_peak
     memory_s = bytes_moved / (gpu.mem_bw_bytes_per_s * eff.memory)
-    return PhaseEstimate(linear_flops + attention_flops, bytes_moved, compute_s, memory_s)
+    return PhaseEstimate(linear_flops + attention_flops, bytes_moved, compute_s, memory_s, comm_s)
 
 
 def prefill(
@@ -151,20 +177,24 @@ def prefill(
     batch_size: int = 1,
     kv_dtype: str = "bf16",
     eff: Efficiency = IDEAL,
+    tp: int = 1,
 ) -> PhaseEstimate:
     """Process `batch_size` prompts of `prompt_len` tokens and emit one token each.
 
     FLOPs: 2 * decoder linear params per prompt token, lm_head for the last token
     only, and causal attention sum_{i=1..T} 4*L*d*i = 2*L*d*T*(T+1).
     Bytes: read all weights once, write T tokens of KV per prompt.
+    With tensor parallelism (tp GPUs) each GPU does 1/tp of the FLOPs and weight bytes,
+    plus the all-reduces (see allreduce_s). Times are per GPU, i.e. wall-clock.
     """
     if prompt_len <= 0 or batch_size <= 0:
         raise ValueError("prompt_len and batch_size must be positive")
+    _check_tp(gpu, tp)
     T, B = prompt_len, batch_size
-    linear = B * (2.0 * model.decoder_linear_params * T + 2.0 * model.vocab_size * model.hidden_size)
-    attention = B * 2.0 * model.num_layers * model.q_dim * T * (T + 1)
-    bytes_moved = weight_bytes(model, quant) + B * T * model.kv_bytes_per_token(kv_dtype)
-    return _phase(gpu, quant, linear, attention, bytes_moved, eff)
+    linear = B * (2.0 * model.decoder_linear_params * T + 2.0 * model.vocab_size * model.hidden_size) / tp
+    attention = B * 2.0 * model.num_layers * model.q_dim * T * (T + 1) / tp
+    bytes_moved = weight_bytes(model, quant) / tp + B * T * model.kv_bytes_per_token(kv_dtype, tp)
+    return _phase(gpu, quant, linear, attention, bytes_moved, eff, allreduce_s(gpu, model, B * T, tp))
 
 
 def ttft_s(
@@ -174,9 +204,10 @@ def ttft_s(
     prompt_len: int,
     kv_dtype: str = "bf16",
     eff: Efficiency = IDEAL,
+    tp: int = 1,
 ) -> float:
-    """Time to first token for one request on an idle GPU."""
-    return prefill(gpu, model, quant, prompt_len, 1, kv_dtype, eff).time_s
+    """Time to first token for one request on an idle GPU (or tp-GPU group)."""
+    return prefill(gpu, model, quant, prompt_len, 1, kv_dtype, eff, tp).time_s
 
 
 def decode_step(
@@ -187,20 +218,23 @@ def decode_step(
     context_len: int,
     kv_dtype: str = "bf16",
     eff: Efficiency = IDEAL,
+    tp: int = 1,
 ) -> PhaseEstimate:
     """One decode iteration: every sequence in the batch emits one token.
 
     FLOPs: 2 * linear params (incl. lm_head) + attention over `context_len` keys, per sequence.
     Bytes: read all weights once, read each sequence's KV, write one new KV entry each.
+    With tensor parallelism, per-GPU shares plus all-reduces as in prefill().
     """
     if batch_size <= 0 or context_len <= 0:
         raise ValueError("batch_size and context_len must be positive")
+    _check_tp(gpu, tp)
     B = batch_size
-    kv = model.kv_bytes_per_token(kv_dtype)
-    linear = B * model.linear_flops_per_token(include_lm_head=True)
-    attention = B * model.attention_flops_per_token(context_len)
-    bytes_moved = weight_bytes(model, quant) + B * (context_len + 1) * kv
-    return _phase(gpu, quant, linear, attention, bytes_moved, eff)
+    kv = model.kv_bytes_per_token(kv_dtype, tp)
+    linear = B * model.linear_flops_per_token(include_lm_head=True) / tp
+    attention = B * model.attention_flops_per_token(context_len) / tp
+    bytes_moved = weight_bytes(model, quant) / tp + B * (context_len + 1) * kv
+    return _phase(gpu, quant, linear, attention, bytes_moved, eff, allreduce_s(gpu, model, B, tp))
 
 
 def decode_throughput_tokens_per_s(step: PhaseEstimate, batch_size: int) -> float:

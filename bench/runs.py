@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from capacity_planner.gpus import GPUS
+from capacity_planner.models import DEFAULT_MODEL, registry
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUESTS = ROOT / "bench" / "requests.json"
@@ -40,6 +41,8 @@ class Run:
     gpu: str
     suite: str
     quant: str = "bf16"
+    model: str = DEFAULT_MODEL  # a name from capacity_planner/data/models.json
+    tp: int = 1  # tensor-parallel degree = GPUs in the container
     # serve suite only: {"prompt", "output", "rps", "max_num_seqs"} for one replica
     serve: dict | None = None
 
@@ -50,6 +53,16 @@ class Run:
             raise ValueError(f"run {self.id}: unknown suite {self.suite!r}")
         if self.quant not in QUANTS:
             raise ValueError(f"run {self.id}: unknown quant {self.quant!r}")
+        if self.model not in registry():
+            raise ValueError(f"run {self.id}: unknown model {self.model!r}")
+        if self.suite == "micro" and self.model != DEFAULT_MODEL:
+            raise ValueError(f"run {self.id}: the micro suite doesn't load a model")
+        if self.quant == "awq-int4" and not registry()[self.model].awq_repo:
+            raise ValueError(f"run {self.id}: no official AWQ checkpoint for {self.model}")
+        if not isinstance(self.tp, int) or self.tp < 1:
+            raise ValueError(f"run {self.id}: tp must be a positive integer")
+        if self.tp > 1 and (GPUS[self.gpu].nvlink_gbs is None or self.suite == "micro"):
+            raise ValueError(f"run {self.id}: tp > 1 needs an NVLink GPU and a model suite")
         if not self.id or "/" in self.id or " " in self.id:
             raise ValueError(f"bad run id {self.id!r}")
         if (self.suite == "serve") != (self.serve is not None):
@@ -65,11 +78,16 @@ class Run:
 
     @property
     def worst_case_usd(self) -> float:
-        return cost_usd(self.gpu, self.timeout_min * 60)
+        return cost_usd(self.gpu, self.timeout_min * 60, self.tp)
+
+    @property
+    def modal_gpu(self) -> str:
+        base = GPUS[self.gpu].modal_gpu
+        return base if self.tp == 1 else f"{base}:{self.tp}"
 
 
-def cost_usd(gpu: str, seconds: float) -> float:
-    return GPUS[gpu].price_per_hour * seconds / 3600 * NON_GPU_MARGIN
+def cost_usd(gpu: str, seconds: float, count: int = 1) -> float:
+    return GPUS[gpu].price_per_hour * count * seconds / 3600 * NON_GPU_MARGIN
 
 
 def load_requests(path: Path = REQUESTS) -> tuple[float, list[Run]]:
@@ -123,6 +141,8 @@ def collect(out_dir: Path, results_dir: Path = RESULTS) -> list[dict]:
                 "gpu": rec["gpu"],
                 "suite": rec["suite"],
                 "quant": rec["quant"],
+                "model": rec.get("model", DEFAULT_MODEL),
+                "tp": rec.get("tp", 1),
                 "serve": rec.get("serve"),
                 "status": rec["status"],
                 "reached_modal": rec.get("reached_modal", True),
@@ -155,7 +175,8 @@ def main(argv: list[str] | None = None) -> int:
         budget, runs = load_requests()
         pending = plan(budget, runs, ledger)
         matrix = [
-            {"id": r.id, "gpu": r.gpu, "suite": r.suite, "quant": r.quant, "timeout_min": r.timeout_min,
+            {"id": r.id, "gpu": r.gpu, "suite": r.suite, "quant": r.quant, "model": r.model, "tp": r.tp,
+             "timeout_min": r.timeout_min,
              "serve": r.serve}
             for r in pending
         ]
@@ -165,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
             f"worst case ${worst:.2f}; budget ${budget:.2f}"
         )
         for m in matrix:
-            print(f"  {m['id']}: {m['gpu']} {m['suite']} {m['quant']}")
+            print(f"  {m['id']}: {m['model']} {m['gpu']}x{m['tp']} {m['suite']} {m['quant']}")
         if args.github_output:
             with open(args.github_output, "a") as fh:
                 fh.write(f"matrix={json.dumps(matrix)}\n")

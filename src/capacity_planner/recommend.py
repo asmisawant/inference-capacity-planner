@@ -32,6 +32,8 @@ from dataclasses import dataclass
 
 from .calibration import MeasuredConfig, measured_configs
 from .roofline import DEFAULT_GPU_MEMORY_UTILIZATION
+from .models import DEFAULT_MODEL, registry
+from .validation import same_setup
 
 ENGINE = "vLLM 0.30.0"
 
@@ -128,8 +130,10 @@ class Recommendation:
     queue: QueuePrediction | None = None
     kv_cache_tokens: int = 0
     price_per_hour: float = 0.0
-    run_id: str = ""
+    run_id: str = ""  # the vllm run behind the curves (for predicted configs: the Qwen-7B source run)
     compile_fallback: bool = False
+    gpus_per_replica: int = 1  # tensor-parallel degree
+    predicted: bool = False  # curves transferred from Qwen-7B, never measured for this model
     ttft_margin: float = 1.0  # p90 TTFT safety factor from serve runs (see serve_calibration)
 
     @property
@@ -177,9 +181,11 @@ def evaluate(c: MeasuredConfig, w: Workload, ttft_margin: float = 1.0, overhead_
         gpu=c.gpu.name,
         quant=c.quant.name,
         kv_cache_tokens=c.kv_cache_tokens,
-        price_per_hour=c.gpu.price_per_hour,
-        run_id=c.run["id"],
+        price_per_hour=c.gpu.price_per_hour * c.tp,
+        run_id=c.source,
         compile_fallback=c.compile_fallback,
+        gpus_per_replica=c.tp,
+        predicted=c.predicted,
     )
     seq_len = w.prompt_len + w.output_len
     if seq_len > c.max_model_len:
@@ -293,10 +299,11 @@ def serve_runs(results: list[dict], configs: list[MeasuredConfig]) -> list[tuple
     by_key = {c.key: c for c in configs}
     out = []
     for r in results:
-        if r["suite"] == "serve" and (r["gpu"], r["quant"]) in by_key:
+        c = by_key.get((r["gpu"], r["quant"], r.get("tp", 1)))
+        if r["suite"] == "serve" and c is not None and same_setup(r, c.model.name, c.tp):
             s = r["serve"]
             w = Workload(s["prompt"], s["output"], s["rps"], ttft_slo_s=1e9, tpot_slo_s=1e9)
-            out.append((r, by_key[(r["gpu"], r["quant"])], w))
+            out.append((r, c, w))
     return out
 
 
@@ -333,17 +340,22 @@ def recommend(
     quants: set[str] | None = None,
     configs: list[MeasuredConfig] | None = None,
     cal: ServeCalibration | None = None,
+    model: str = DEFAULT_MODEL,
 ) -> list[Recommendation]:
-    """All measured configs, feasible ones first, cheapest first."""
-    configs = measured_configs() if configs is None else configs
-    cal = serve_calibration(configs=configs) if cal is None else cal
+    """All candidate configs for `model`, feasible ones first, cheapest first.
+
+    Serving overhead and p90 margins always come from the Qwen-7B serve runs."""
+    from .transfer import candidate_configs
+
+    configs = candidate_configs(model) if configs is None else configs
+    cal = serve_calibration(configs=configs if model == DEFAULT_MODEL else None) if cal is None else cal
     recs = [
         evaluate(c, w, cal(c.gpu.name), cal.overhead_s) for c in configs if quants is None or c.quant.name in quants
     ]
 
     def key(r: Recommendation):
         tpot = r.operating.tpot_s if r.operating else 0.0
-        return (not r.feasible, round(r.cost_per_hour, 6), QUANT_PREFERENCE[r.quant], tpot, r.gpu)
+        return (not r.feasible, round(r.cost_per_hour, 6), r.predicted, QUANT_PREFERENCE[r.quant], tpot, r.gpu)
 
     return sorted(recs, key=key)
 
@@ -357,21 +369,31 @@ def table(w: Workload, recs: list[Recommendation], top: int | None = None) -> st
     for r in feasible[:top] if top else feasible:
         o = r.operating
         note = " ¹" if r.compile_fallback else ""
+        gpu = r.gpu if r.gpus_per_replica == 1 else f"{r.gpus_per_replica}× {r.gpu}"
+        run = f"predicted ² from {r.run_id}" if r.predicted else r.run_id
         rows.append(
-            f"| {r.gpu} | {r.quant}{note} | {r.replicas} | {r.cost_per_hour:.2f} "
+            f"| {gpu} | {r.quant}{note} | {r.replicas} | {r.cost_per_hour:.2f} "
             f"| {r.cost_per_million_tokens(w):.3f} | {r.cost_per_million_tokens(w, output_only=True):.3f} "
             f"| {o.batch} ({r.max_num_seqs}) | {r.queue.ttft_p90_s * r.ttft_margin * 1e3:.0f} (×{r.ttft_margin:.2f}) "
             f"| {o.tpot_s * 1e3:.1f} "
-            f"| {r.kv_cache_tokens:,} | {r.run_id} |"
+            f"| {r.kv_cache_tokens:,} | {run} |"
         )
     if not feasible:
         rows.append("| _none_ | | | | | | | | | | |")
     infeasible = [r for r in recs if not r.feasible]
     out = "\n".join(rows)
     if infeasible:
-        out += "\n\nNot feasible: " + "; ".join(f"{r.gpu} {r.quant} ({r.reason})" for r in infeasible) + "."
+        out += "\n\nNot feasible: " + "; ".join(
+            f"{r.gpus_per_replica}× {r.gpu} {r.quant} ({r.reason})" if r.gpus_per_replica > 1 else f"{r.gpu} {r.quant} ({r.reason})"
+            for r in infeasible
+        ) + "."
     if any(r.compile_fallback for r in feasible):
         out += "\n\n¹ benchmarked with vLLM's eager compile backend after an Inductor error."
+    if any(r.predicted for r in feasible):
+        out += (
+            "\n\n² never run for this model: curves transferred from the named Qwen2.5-7B run "
+            "(see \"Predicting models we never benchmarked\")."
+        )
     return out
 
 
@@ -393,6 +415,21 @@ def examples_markdown(top: int = 3) -> str:
     return "\n\n".join(parts)
 
 
+def other_models_markdown(top: int = 3) -> str:
+    """The first example workload for every registry model besides the default."""
+    from .transfer import candidate_configs
+
+    cal = serve_calibration()
+    name, w = EXAMPLES[0]
+    parts = []
+    for model in registry():
+        if model == DEFAULT_MODEL:
+            continue
+        recs = recommend(w, configs=candidate_configs(model), cal=cal, model=model)
+        parts.append(f"**{model}, {name.lower()}:** {describe(w)}.\n\n{table(w, recs, top)}")
+    return "\n\n".join(parts)
+
+
 def describe(w: Workload) -> str:
     return (
         f"{w.prompt_len}-token prompts, {w.output_len}-token outputs, {w.rps:g} requests/s, "
@@ -401,7 +438,8 @@ def describe(w: Workload) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Recommend a GPU + serving config for Qwen2.5-7B-Instruct.")
+    ap = argparse.ArgumentParser(description="Recommend a GPU + serving config for a model in the registry.")
+    ap.add_argument("--model", default=DEFAULT_MODEL, choices=sorted(registry()))
     ap.add_argument("--prompt", type=int, required=True, help="prompt tokens per request")
     ap.add_argument("--output", type=int, required=True, help="output tokens per request")
     ap.add_argument("--rps", type=float, required=True, help="requests per second")
@@ -411,13 +449,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--top", type=int, default=5)
     a = ap.parse_args(argv)
     w = Workload(a.prompt, a.output, a.rps, a.ttft_ms / 1e3, a.tpot_ms / 1e3)
-    recs = recommend(w, set(a.quant) if a.quant else None)
-    print(describe(w) + "\n")
+    recs = recommend(w, set(a.quant) if a.quant else None, model=a.model)
+    print(f"{a.model}: {describe(w)}\n")
     print(table(w, recs, a.top))
     best = next((r for r in recs if r.feasible), None)
     if best:
         print(
-            f"\nRecommended: {best.replicas} x {best.gpu}, {ENGINE}, quant={best.quant}, "
+            f"\nRecommended{' (predicted, not yet benchmarked for this model)' if best.predicted else ''}: "
+            f"{best.replicas} x {best.gpu if best.gpus_per_replica == 1 else f'{best.gpus_per_replica}x {best.gpu}'}, "
+            f"{ENGINE}, quant={best.quant}, tensor_parallel_size={best.gpus_per_replica}, "
             f"max_num_seqs={best.max_num_seqs}, gpu_memory_utilization={DEFAULT_GPU_MEMORY_UTILIZATION}, "
             f"KV cache {best.kv_cache_tokens:,} tokens/replica, ${best.cost_per_hour:.2f}/hr, "
             f"${best.cost_per_million_tokens(w):.3f}/1M tokens"

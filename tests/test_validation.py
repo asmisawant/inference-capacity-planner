@@ -139,3 +139,16 @@ def test_margin_table_lists_every_gpu():
 
 def test_holdout_table_without_holdout_runs():
     assert v.holdout_table([]) == v.NO_RESULTS
+
+
+def test_tables_only_use_the_default_model_on_one_gpu():
+    other = {**vllm_record("o", ttft_s=9.9), "model": "Granite-3.1-8B-Instruct"}
+    tp2 = {**vllm_record("t", ttft_s=9.9), "tp": 2}
+    assert v.latest([vllm_record(), other, tp2], "vllm")[("L4", "bf16")]["id"] == "v1"
+    assert v.latest([other], "vllm", model="Granite-3.1-8B-Instruct")[("L4", "bf16")]["id"] == "o"
+
+
+def test_load_results_defaults_model_and_tp(tmp_path):
+    (tmp_path / "a.json").write_text(json.dumps(micro_record("a")))
+    (r,) = v.load_results(tmp_path)
+    assert (r["model"], r["tp"]) == ("Qwen2.5-7B-Instruct", 1)

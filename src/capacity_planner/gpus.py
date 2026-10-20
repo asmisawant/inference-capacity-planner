@@ -34,6 +34,9 @@ class GPUSpec:
     spec_source: str
     price_source: str = MODAL_PRICE_SOURCE
     notes: tuple[str, ...] = field(default_factory=tuple)
+    # NVLink bandwidth per GPU per direction, GB/s (datasheet total / 2). None: no NVLink,
+    # so the planner doesn't consider tensor parallelism on it.
+    nvlink_gbs: float | None = None
 
     @property
     def memory_bytes(self) -> float:
@@ -100,6 +103,7 @@ GPUS: dict[str, GPUSpec] = {
         modal_gpu="A100-40GB",
         spec_source="https://www.nvidia.com/en-us/data-center/a100/ (A100 SXM datasheet)",
         notes=("Assumes Modal's A100s are SXM parts.",),
+        nvlink_gbs=300,  # datasheet: NVLink 600 GB/s
     ),
     "A100-80GB": GPUSpec(
         name="A100-80GB",
@@ -112,6 +116,7 @@ GPUS: dict[str, GPUSpec] = {
         modal_gpu="A100-80GB",
         spec_source="https://www.nvidia.com/en-us/data-center/a100/ (A100 SXM datasheet)",
         notes=("Assumes Modal's A100s are SXM parts.",),
+        nvlink_gbs=300,  # datasheet: NVLink 600 GB/s
     ),
     "H100": GPUSpec(
         name="H100",
@@ -124,6 +129,7 @@ GPUS: dict[str, GPUSpec] = {
         modal_gpu="H100!",  # "!" stops Modal upgrading the request to an H200
         spec_source="https://www.nvidia.com/en-us/data-center/h100/ (H100 SXM datasheet)",
         notes=("Assumes Modal's H100 is the SXM part.",),
+        nvlink_gbs=450,  # datasheet: NVLink 900 GB/s
     ),
 }
 

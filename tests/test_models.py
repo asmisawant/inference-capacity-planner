@@ -1,6 +1,6 @@
 import pytest
 
-from capacity_planner.models import load_model
+from capacity_planner.models import load_model, registry
 
 
 @pytest.fixture
@@ -37,3 +37,13 @@ def test_flops_per_token(qwen):
 def test_unknown_model():
     with pytest.raises(KeyError):
         load_model("nope")
+
+
+@pytest.mark.parametrize("name", sorted(registry()))
+def test_param_count_matches_checkpoint_bytes(name):
+    """Every registry model ships BF16 safetensors, so the checkpoint is 2 bytes per parameter."""
+    import json
+    from importlib import resources
+
+    cfg = json.loads(resources.files("capacity_planner").joinpath("data", registry()[name].file).read_text())
+    assert cfg["_source"]["safetensors_total_bytes"] == 2 * load_model(name).total_params

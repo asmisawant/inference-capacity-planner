@@ -27,10 +27,10 @@ REQUESTS = ROOT / "bench" / "requests.json"
 RESULTS = ROOT / "results"
 LEDGER = RESULTS / "ledger.jsonl"
 
-SUITES = ("micro", "vllm", "serve")
+SUITES = ("micro", "vllm", "serve", "sglang")
 QUANTS = ("bf16", "fp8", "awq-int4")
 # Modal container timeout per suite. Also the worst-case billable time we budget for.
-TIMEOUT_MIN = {"micro": 15, "vllm": 30, "serve": 30}
+TIMEOUT_MIN = {"micro": 15, "vllm": 30, "serve": 30, "sglang": 30}
 # Modal also bills CPU and RAM alongside the GPU; budget a margin for it.
 NON_GPU_MARGIN = 1.10
 

@@ -50,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
 
     import modal
 
-    from bench.modal_app import Bench, app, download
+    from bench.modal_app import Bench, SGLangBench, app, download
     from bench.vllm_bench import hf_model
 
     gh = os.environ
@@ -84,11 +84,12 @@ def main(argv: list[str] | None = None) -> int:
             with modal.enable_output(), app.run():
                 record["reached_modal"] = True
                 revision = None
-                if run.suite in ("vllm", "serve"):
+                if run.suite in ("vllm", "serve", "sglang"):
                     revision = download.remote(hf_model(run.model, run.quant)[0])
                     record["model_revision"] = revision
                 gpu_t0 = time.monotonic()
-                bench = Bench.with_options(gpu=run.modal_gpu, timeout=run.timeout_min * 60)()
+                cls = SGLangBench if run.suite == "sglang" else Bench
+                bench = cls.with_options(gpu=run.modal_gpu, timeout=run.timeout_min * 60)()
                 record["result"] = bench.run.remote(run.suite, run.quant, revision, run.serve, run.model, run.tp)
                 record["gpu_call_s"] = time.monotonic() - gpu_t0
             if "remote_error" in record["result"]:

@@ -15,7 +15,7 @@ def test_run_validation():
     with pytest.raises(ValueError):
         _run(gpu="V100")
     with pytest.raises(ValueError):
-        _run(suite="sglang")
+        _run(suite="trtllm")
     with pytest.raises(ValueError):
         _run(quant="int3")
     with pytest.raises(ValueError):
@@ -150,3 +150,15 @@ def test_collect_records_model_and_tp(tmp_path):
     (out / "new.json").write_text(json.dumps({**base, "id": "new", "gpu": "H100", "model": "Qwen2.5-32B-Instruct", "tp": 2}))
     got = {e["id"]: (e["model"], e["tp"]) for e in runs.collect(out, tmp_path / "res")}
     assert got == {"old": ("Qwen2.5-7B-Instruct", 1), "new": ("Qwen2.5-32B-Instruct", 2)}
+
+
+def test_sglang_suite():
+    r = runs.Run(id="s", gpu="H100", suite="sglang", quant="fp8", model="Qwen2.5-32B-Instruct", tp=2)
+    assert r.worst_case_usd == pytest.approx(2 * _run(gpu="H100").worst_case_usd)
+    from bench import sglang_bench, vllm_bench
+
+    # Same measurement grid as the vLLM bench, so the two engines compare point by point.
+    assert sglang_bench.TTFT_PROMPT_LENS == vllm_bench.TTFT_PROMPT_LENS
+    assert sglang_bench.DECODE_BATCHES == vllm_bench.DECODE_BATCHES
+    prompts = sglang_bench.random_prompts(3, 10, vocab=49_155)
+    assert len(prompts) == 3 and all(len(p) == 10 and max(p) < 49_155 for p in prompts)

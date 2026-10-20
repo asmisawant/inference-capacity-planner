@@ -38,6 +38,40 @@ image = (
 )
 
 
+# SGLang's official image for v0.5.21 (Docker Hub lmsysorg/sglang:v0.5.21, pushed
+# 2026-10-01), pinned by its linux/amd64 digest.
+SGLANG_IMAGE = (
+    "lmsysorg/sglang@sha256:2dbe4c7f53230b09aaa8fa41891c13c51d9d2e253f486a70822aaf08783fff75"
+)
+
+sglang_image = (
+    modal.Image.from_registry(SGLANG_IMAGE)
+    .entrypoint([])
+    .run_commands('command -v python || ln -s "$(command -v python3)" /usr/local/bin/python')
+    .env({"HF_HOME": HF_CACHE, "HF_XET_HIGH_PERFORMANCE": "1"})
+    .add_local_python_source("bench", "capacity_planner", ignore=["**/__pycache__/**"])
+)
+
+
+def run_child(module: str, args: list[str]) -> tuple[int, str, dict | None]:
+    """Run `python -m module ... --out FILE` offline, streaming and keeping its log."""
+    with tempfile.TemporaryDirectory() as tmp:
+        out = os.path.join(tmp, "out.json")
+        cmd = [sys.executable, "-m", module, *args, "--out", out]
+        env = {**os.environ, "HF_HUB_OFFLINE": "1"}
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd="/root")
+        log_lines = []
+        for line in proc.stdout:
+            print(line, end="")
+            log_lines.append(line)
+        rc = proc.wait()
+        result = None
+        if rc == 0:
+            with open(out) as fh:
+                result = json.load(fh)
+    return rc, "".join(log_lines), result
+
+
 @app.function(image=image, volumes={HF_CACHE: hf_volume}, cpu=4, timeout=30 * 60)
 def download(repo_id: str) -> str:
     """Fetch weights into the volume (no-op if cached). Returns the commit sha."""
@@ -121,22 +155,33 @@ class Bench:
         return self._run_child("bench.vllm_bench", quant, revision, extra)
 
     def _run_child(self, module: str, quant: str, revision: str | None, extra: list[str]):
-        with tempfile.TemporaryDirectory() as tmp:
-            out = os.path.join(tmp, "out.json")
-            cmd = [sys.executable, "-m", module, "--quant", quant, *self._model_args, "--out", out, *extra]
-            if revision:
-                cmd += ["--revision", revision]
-            env = {**os.environ, "HF_HUB_OFFLINE": "1"}
-            proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd="/root"
-            )
-            log_lines = []
-            for line in proc.stdout:
-                print(line, end="")
-                log_lines.append(line)
-            rc = proc.wait()
-            result = None
-            if rc == 0:
-                with open(out) as fh:
-                    result = json.load(fh)
-        return rc, "".join(log_lines), result
+        args = ["--quant", quant, *self._model_args, *extra] + (["--revision", revision] if revision else [])
+        return run_child(module, args)
+
+
+@app.cls(image=sglang_image, gpu="L4", volumes={HF_CACHE: hf_volume}, timeout=30 * 60)
+class SGLangBench:
+    @modal.method()
+    def run(
+        self, suite: str, quant: str, revision: str | None = None, serve: dict | None = None,
+        model: str | None = None, tp: int = 1,
+    ) -> dict:
+        """The sglang suite: bench.sglang_bench on SGLang's image. Plain JSON out, as Bench.run."""
+        import traceback
+
+        from bench import micro
+        from capacity_planner.models import DEFAULT_MODEL
+
+        try:
+            if suite != "sglang":
+                raise ValueError(f"SGLangBench runs only the sglang suite, not {suite!r}")
+            info = micro.gpu_info()
+            args = ["--quant", quant, "--model", model or DEFAULT_MODEL, "--tp", str(tp)]
+            args += ["--revision", revision] if revision else []
+            rc, log, result = run_child("bench.sglang_bench", args)
+            if rc != 0:
+                tail = "".join(log.splitlines(keepends=True)[-40:])
+                raise RuntimeError(f"sglang_bench exited {rc}; last log lines:\n{tail}")
+            return json.loads(json.dumps({"gpu_info": info, "sglang": result}, default=str))
+        except Exception as e:
+            return {"remote_error": f"{type(e).__name__}: {e}", "traceback": traceback.format_exc()}

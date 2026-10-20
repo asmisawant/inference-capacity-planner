@@ -517,6 +517,32 @@ Not feasible: A10G awq-int4 (misses SLO: TTFT 1089 ms at batch 1); L4 awq-int4 (
 ² never run for this model: curves transferred from the named Qwen2.5-7B run (see "Predicting models we never benchmarked").
 <!-- END GENERATED: recommend_other_models -->
 
+### Do those recommendations hold under real load?
+
+The table above checks the raw curves. This checks what a user actually gets: the
+recommender's full answer for a model it was never tuned on, under `vllm serve` with
+Poisson arrivals. That answer includes the replica count, `max_num_seqs`, and the
+queueing model, serving overhead and p90 margins learned from the Qwen-7B serve runs.
+
+Five setups were tested, each the recommender's first or second choice for a README
+example workload. Two of them use curves that were only transferred from Qwen-7B, never
+measured for that model, and one runs on two GPUs per replica. One replica is
+load-tested at its share of the traffic.
+
+The predictions were frozen in `predictions/serve.json` before the runs, and this table
+reads only that file. "Targets met" means the measured p90 TTFT and median TPOT are within
+the workload's targets.
+
+<!-- BEGIN GENERATED: serve_check -->
+| Model | Workload | Replica | Curves | Load per replica (req/s, max_num_seqs) | TTFT ms p50: predicted / measured | TTFT ms p90: predicted / measured (error) | p90 × margin vs target | TPOT ms: predicted / measured (target) | Targets met | Run |
+|---|---|---|---|---|---:|---:|---|---:|---|---|
+| Granite-3.1-8B-Instruct | Chat assistant (1 replica) | A100-40GB bf16 | 034-a100-40gb-vllm-granite8b-bf16 | 5, 73 | 157 / – | 337 / – | 337 vs 500 | 39.3 / – (50) | – | not run yet |
+| Granite-3.1-8B-Instruct | Chat assistant (1 replica) | A100-80GB bf16 | predicted from 013-a100-80gb-vllm-bf16 | 5, 82 | 139 / – | 290 / – | 309 vs 500 | 27.7 / – (50) | – | not run yet |
+| Granite-3.1-8B-Instruct | Long-context interactive (2 replicas) | H100 fp8 | 036-h100-vllm-granite8b-fp8 | 10, 80 | 105 / – | 219 / – | 219 vs 300 | 25.2 / – (30) | – | not run yet |
+| Qwen2.5-32B-Instruct | Chat assistant (1 replica) | H100 fp8 | 037-h100-vllm-qwen32b-fp8 | 5, 86 | 134 / – | 260 / – | 260 vs 500 | 32.1 / – (50) | – | not run yet |
+| Qwen2.5-32B-Instruct | Long-context interactive (5 replicas) | 2× H100 fp8 | predicted from 017-h100-vllm-fp8 | 4, 44 | 138 / – | 249 / – | 249 vs 300 | 17.0 / – (30) | – | not run yet |
+<!-- END GENERATED: serve_check -->
+
 ## Development
 
 ```bash
@@ -532,3 +558,4 @@ python -m capacity_planner.report --update-readme  # regenerate README tables
 2. **Benchmarks on Modal via GitHub Actions** (vLLM first, then SGLang; Qwen2.5-7B-Instruct; budget < $40) to measure memory overhead and achieved FLOPs/bandwidth (done; see the tables above).
 3. **Calibrate the roofline and build the recommender**: model + SLOs + traffic → GPU, engine, quantization, batch size, KV-cache size, $/1M tokens; validated with `vllm serve` under load (done).
 4. **Predict unmeasured models and multi-GPU setups**, then check the predictions against new runs (done).
+5. **Load-test recommendations for those models** under `vllm serve` (in progress).

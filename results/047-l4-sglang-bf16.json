@@ -1,0 +1,22 @@
+{
+  "cost_usd_upper_bound": 0.08073586075441261,
+  "error": "RemoteError: ",
+  "finished_at": "2026-10-20T08:22:48+00:00",
+  "git_sha": "8b6781c366089c9aa3d64a86aea27850d7cf5980",
+  "github_run_url": "https://github.com/asmisawant/inference-capacity-planner/actions/runs/39392258544",
+  "gpu": "L4",
+  "id": "047-l4-sglang-bf16",
+  "modal_gpu": "L4",
+  "model": "Qwen2.5-7B-Instruct",
+  "model_revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+  "price_per_hour": 0.7992,
+  "quant": "bf16",
+  "reached_modal": true,
+  "serve": null,
+  "start_attempts": 1,
+  "started_at": "2026-10-20T08:17:17+00:00",
+  "status": "error",
+  "suite": "sglang",
+  "tp": 1,
+  "wall_s": 330.613680403
+}

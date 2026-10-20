@@ -582,6 +582,45 @@ which makes it a property of this model on this GPU rather than noise. It is als
 margin is per GPU but learned from every model: a smaller model on the same GPU
 (Qwen-7B, Granite) came in under its prediction.
 
+## SGLang vs vLLM (step 6)
+
+The same offline benchmark, run on SGLang v0.5.21 (official image, pinned by digest) for
+Qwen2.5-7B on the same GPUs and quantizations. Request settings match the vLLM runs:
+context 4096, 256 running requests, prefix caching off, random token-id prompts.
+
+Each engine otherwise keeps its own defaults, which is what a user gets out of the box.
+That includes the share of GPU memory each one gives to weights + KV cache: vLLM's
+`gpu_memory_utilization`, and SGLang's `mem_fraction_static`, which SGLang picks per GPU.
+
+SGLang reports no per-request first-token time, so its TTFT is the end-to-end latency of
+a one-token request on an idle engine. That includes a little more of the request path
+than vLLM's queued → first-token. The decode step uses the same two-output-length
+difference for both engines.
+
+<!-- BEGIN GENERATED: engine_comparison -->
+| GPU | Quant | Memory fraction for weights + KV: vLLM / SGLang | KV tokens: vLLM / SGLang | TTFT ms at 128: vLLM / SGLang | TTFT ms at 1024: vLLM / SGLang | TTFT ms at 4000: vLLM / SGLang | Decode step ms at batch 1: vLLM / SGLang | Largest batch both ran: step ms vLLM / SGLang | Runs |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---|
+| L4 | awq-int4 | 0.92 / – | 246,528 / – | 41 / – | 288 / – | 1194 / – | 19.0 / – | – | [018-l4-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
+| L4 | bf16 | 0.92 / 0.68 | 60,816 / 11,639 | 71 / 126 | 257 / 298 | 1034 / 1056 | 56.5 / 56.0 | 16: 60.9 / 60.5 | [006-l4-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39222305725) · [049-l4-sglang-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39393658297) |
+| L4 | fp8 | 0.92 / – | 190,512 / – | 44 / – | 190 / – | 836 / – | 34.5 / – | – | [015-l4-vllm-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
+| A10G | awq-int4 | 0.92 / – | 246,480 / – | 32 / – | 228 / – | 907 / – | 10.8 / – | – | [019-a10g-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
+| A10G | bf16 | 0.92 / – | 60,512 / – | 41 / – | 211 / – | 928 / – | 32.4 / – | – | [011-a10g-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223773836) |
+| A100-40GB | bf16 | 0.92 / – | 360,528 / – | 20 / – | 68 / – | 255 / – | 12.2 / – | – | [012-a100-40gb-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
+| A100-80GB | awq-int4 | 0.92 / – | 1,231,408 / – | 16 / – | 91 / – | 359 / – | 4.8 / – | – | [020-a100-80gb-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
+| A100-80GB | bf16 | 0.92 / – | 1,045,408 / – | 15 / – | 68 / – | 260 / – | 10.1 / – | – | [013-a100-80gb-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223773836) |
+| H100 | awq-int4 | 0.92 / – | 1,203,072 / – | 8 / – | 25 / – | 96 / – | 4.2 / – | – | [021-h100-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
+| H100 | bf16 | 0.92 / – | 1,035,104 / – | 9 / – | 24 / – | 91 / – | 6.1 / – | – | [014-h100-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
+| H100 | fp8 | 0.92 / – | 1,149,168 / – | 7 / – | 18 / – | 68 / – | 4.2 / – | – | [017-h100-vllm-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
+<!-- END GENERATED: engine_comparison -->
+
+The same correction fits as for vLLM (TTFT = c0 + c1 × roofline, decode = a × roofline + b × batch), for SGLang:
+
+<!-- BEGIN GENERATED: calibration_fits_sglang -->
+| GPU | Quant | TTFT c0 (ms) | TTFT c1 | TTFT max error | Decode a | Decode b (µs/seq) | Decode max error | Run |
+|---|---|---:|---:|---:|---:|---:|---:|---|
+| L4 | bf16 | 63.9 | 0.93 | 6% | 0.96 | 124 | 2% | 049-l4-sglang-bf16 |
+<!-- END GENERATED: calibration_fits_sglang -->
+
 ## Development
 
 ```bash
@@ -598,3 +637,4 @@ python -m capacity_planner.report --update-readme  # regenerate README tables
 3. **Calibrate the roofline and build the recommender**: model + SLOs + traffic → GPU, engine, quantization, batch size, KV-cache size, $/1M tokens; validated with `vllm serve` under load (done).
 4. **Predict unmeasured models and multi-GPU setups**, then check the predictions against new runs (done).
 5. **Load-test recommendations for those models** under `vllm serve` (done).
+6. **SGLang as a second engine**: benchmark, calibrate, and let the recommender choose the engine (in progress).

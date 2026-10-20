@@ -152,6 +152,7 @@ TP_DEGREES = (1, 2, 4, 8)
 
 
 ENGINES = ("vllm", "sglang")  # offline suite name = engine
+ENGINE_NAMES = {"vllm": "vLLM", "sglang": "SGLang"}
 
 
 def measured_configs(
@@ -223,10 +224,10 @@ def efficiency_table(results: list[dict] | None = None) -> str:
     return "\n".join(rows)
 
 
-def fit_table(results: list[dict] | None = None) -> str:
-    fs = fits(results)
+def fit_table(results: list[dict] | None = None, engine: str = "vllm") -> str:
+    fs = fits(results, engine=engine)
     if not fs:
-        return "_No vLLM runs with decode-step measurements yet._"
+        return f"_No {ENGINE_NAMES[engine]} runs with decode-step measurements yet._"
     rows = [
         "| GPU | Quant | TTFT c0 (ms) | TTFT c1 | TTFT max error | Decode a | Decode b (µs/seq) | Decode max error | Run |",
         "|---|---|---:|---:|---:|---:|---:|---:|---|",

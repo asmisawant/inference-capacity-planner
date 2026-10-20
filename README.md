@@ -572,8 +572,15 @@ prediction was frozen in `predictions/serve-h100-margin.json` before the run.
 |---|---|---|---|---|---:|---:|---|---|---:|---|---|
 | Qwen2.5-32B-Instruct | Long-context interactive (21 replicas) | H100 fp8 | 037-h100-vllm-qwen32b-fp8 | 0.952, 20 | 199 / 206 | 229 / 285 (-20%) | 295 vs 300 | yes | 18.5 / 18.4 (30) | yes | [046-h100-serve-qwen32b-fp8-longctx](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39377167766) |
 
-Over 1 runs, the median |error| is 4% for p50 TTFT, 20% for p90 TTFT and 0% for TPOT.
+Over 1 run, the median |error| is 4% for p50 TTFT, 20% for p90 TTFT and 0% for TPOT.
 <!-- END GENERATED: serve_margin_check -->
+
+The margin held. The raw p90 prediction was again about 20% low: for Qwen-32B on H100, the
+tail runs about 1.25× what the queueing model predicts. The ×1.28 margin covered it with
+little room to spare. That pattern was consistent across all three Qwen-32B H100 runs,
+which makes it a property of this model on this GPU rather than noise. It is also why the
+margin is per GPU but learned from every model: a smaller model on the same GPU
+(Qwen-7B, Granite) came in under its prediction.
 
 ## Development
 

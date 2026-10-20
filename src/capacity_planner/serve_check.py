@@ -167,7 +167,7 @@ def comparison_table(results: list[dict] | None = None, preds: dict | None = Non
     if p90_errs:
         med = statistics.median
         out += (
-            f"\n\nOver {len(p90_errs)} runs, the median |error| is {med(p50_errs):.0%} for p50 TTFT, "
+            f"\n\nOver {len(p90_errs)} run{'s' if len(p90_errs) > 1 else ''}, the median |error| is {med(p50_errs):.0%} for p50 TTFT, "
             f"{med(p90_errs):.0%} for p90 TTFT and {med(tpot_errs):.0%} for TPOT."
         )
     return out

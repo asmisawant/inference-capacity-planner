@@ -60,3 +60,19 @@ def comparison_table(results: list[dict] | None = None) -> str:
             f"| {pair(ta.get(4000), tb.get(4000), ms)} | {pair(sa.get(1), sb.get(1), ms1)} | {big} | {runs} |"
         )
     return "\n".join(rows)
+
+
+def sglang_calibration_summary(results: list[dict] | None = None) -> str:
+    """What the recommender applies to SGLang configs under load."""
+    from .recommend import engine_calibrations
+
+    cal, own = engine_calibrations(results)["sglang"]
+    if not own:
+        return "_No SGLang serve runs yet: SGLang borrows vLLM's serving overhead and margins._"
+    runs = ", ".join(f"{i} ×{x:.2f}" for i, _, x in cal.ratios)
+    margins = ", ".join(f"{g} ×{m:.2f}" for g, m in cal.by_gpu.items())
+    return (
+        f"SGLang serving overhead **{cal.overhead_s * 1e3:.1f} ms** (median measured − predicted p50 TTFT), "
+        f"from {len(cal.ratios)} serve runs within the CUDA-graph limit (measured / predicted p90: {runs}). "
+        f"p90 margins: {margins}; GPUs without an SGLang serve run take vLLM's margin for that GPU."
+    )

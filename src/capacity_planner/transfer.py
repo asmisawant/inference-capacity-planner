@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import roofline as rf
-from .calibration import Fit, fits, gpu_efficiency
+from .calibration import Fit, fits, gpu_efficiency, sglang_graph_max_bs
 from .gpus import GPUS, GPUSpec
 from .models import DEFAULT_MODEL, ModelSpec, load_model, registry
 from .validation import latest, load_results
@@ -93,7 +93,14 @@ class TransferredConfig:
     predicted = True
     max_model_len = 4096  # what the bench (and so the fits) used
     max_num_seqs = MAX_NUM_SEQS
-    max_measured_batch = MAX_NUM_SEQS
+
+    @property
+    def max_measured_batch(self) -> int:
+        """Batches the transferred curves are trusted for: SGLang's CUDA-graph limit (see
+        calibration.sglang_graph_max_bs), or the bench's largest batch."""
+        if self.engine == "sglang":
+            return min(MAX_NUM_SEQS, sglang_graph_max_bs(self.gpu, self.tp))
+        return MAX_NUM_SEQS
 
     @property
     def source_run(self) -> str:

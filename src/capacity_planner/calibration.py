@@ -75,6 +75,25 @@ def _interp(xs: list[float], ys: list[float], x: float) -> float:
     return ys[lo] + t * (ys[hi] - ys[lo])
 
 
+def sglang_graph_max_bs(gpu: GPUSpec, tp: int = 1) -> int:
+    """Largest decode batch SGLang v0.5.21 captures in CUDA graphs by default.
+
+    From sglang/srt/arg_groups/memory_hook.py (GPU-dependent capacity defaults): by GPU
+    memory, < 20 GB: 8; < 35 GB: 48 (160 if tp >= 4); < 60 GB: 32 (160 if tp >= 4);
+    otherwise 256 (512 if tp >= 4). Larger batches decode without graphs: run 067 (Granite,
+    A100-40GB) went from 17.7 ms at batch 32 to 43.5 ms at 64, and serve run 065 missed
+    its targets running about 55 requests at once.
+    """
+    gib = gpu.memory_bytes / 2**30
+    if gib < 20:
+        return 8
+    if gib < 35:
+        return 48 if tp < 4 else 160
+    if gib < 60:
+        return 32 if tp < 4 else 160
+    return 256 if tp < 4 else 512
+
+
 @dataclass
 class MeasuredConfig:
     """One (GPU, quant, tp) that vLLM ran successfully, with its measured curves."""
@@ -117,7 +136,11 @@ class MeasuredConfig:
 
     @property
     def max_measured_batch(self) -> int:
-        return int(self._dec_b[-1])
+        """Largest batch the recommender may use: the largest measured one, and for SGLang
+        no more than its CUDA-graph limit (step time jumps past it; between measured points
+        the interpolation would hide the jump)."""
+        b = int(self._dec_b[-1])
+        return min(b, sglang_graph_max_bs(self.gpu, self.tp)) if self.engine == "sglang" else b
 
     def _roof_ttft(self, p: float) -> float:
         return rf.ttft_s(self.gpu, self.model, self.quant, max(1, round(p)), eff=self.eff, tp=self.tp)

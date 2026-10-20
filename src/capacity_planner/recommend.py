@@ -334,7 +334,9 @@ def serve_calibration(
         configs = [c for m in registry() for c in candidate_configs(m, results)]
     preds = []
     for r, c, w in serve_runs(results, configs):
-        if c.engine != engine:
+        # A run with more slots than the curves are trusted for (SGLang past its CUDA-graph
+        # limit) can't be predicted; it says nothing about overhead or margins.
+        if c.engine != engine or r["serve"]["max_num_seqs"] > c.max_measured_batch:
             continue
         q = predict(c, w, r["serve"]["max_num_seqs"])
         if q is not None and r["id"] not in exclude:
@@ -351,11 +353,25 @@ def serve_calibration(
 
 
 def engine_calibrations(results: list[dict] | None = None) -> dict[str, tuple[ServeCalibration, bool]]:
-    """engine -> (calibration, has its own serve runs). Engines without serve runs use vLLM's."""
+    """engine -> (calibration, has its own serve runs).
+
+    An engine without serve runs uses vLLM's calibration. One with serve runs uses its own
+    serving overhead and its own p90 margin on the GPUs it was load-tested on; on other GPUs
+    it takes vLLM's margin for that GPU (part of the tail is the hardware), never less than
+    its own largest margin."""
     from .calibration import ENGINES
 
     cals = {e: serve_calibration(results, engine=e) for e in ENGINES}
-    return {e: (c, True) if c.ratios else (cals["vllm"], False) for e, c in cals.items()}
+    base = cals["vllm"]
+    out = {}
+    for e, c in cals.items():
+        if e == "vllm" or not c.ratios:
+            out[e] = (c if e == "vllm" else base, e == "vllm")
+            continue
+        own = c.default
+        by_gpu = {g: max(m, own) for g, m in base.by_gpu.items()} | c.by_gpu
+        out[e] = (ServeCalibration(c.overhead_s, by_gpu, c.ratios), True)
+    return out
 
 
 def recommend(

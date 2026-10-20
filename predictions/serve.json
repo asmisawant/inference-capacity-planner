@@ -1,0 +1,131 @@
+{
+  "method": "capacity_planner.serve_check: recommender output for one replica at its share of the load",
+  "serving_overhead_s": 0.03353036689691846,
+  "predictions": {
+    "Granite-3.1-8B-Instruct|Chat assistant|A100-40GB|bf16|tp1": {
+      "model": "Granite-3.1-8B-Instruct",
+      "gpu": "A100-40GB",
+      "quant": "bf16",
+      "tp": 1,
+      "workload": "Chat assistant",
+      "slo": {
+        "ttft_p90_s": 0.5,
+        "tpot_s": 0.05
+      },
+      "total_rps": 5,
+      "replicas": 1,
+      "curves": "034-a100-40gb-vllm-granite8b-bf16",
+      "serve": {
+        "prompt": 1024,
+        "output": 256,
+        "rps": 5.0,
+        "max_num_seqs": 73
+      },
+      "ttft_p50_s": 0.15658846958718978,
+      "ttft_p90_s": 0.3370375861540287,
+      "ttft_margin": 1.0,
+      "tpot_s": 0.03932519676278798,
+      "busy_batch": 51
+    },
+    "Granite-3.1-8B-Instruct|Chat assistant|A100-80GB|bf16|tp1": {
+      "model": "Granite-3.1-8B-Instruct",
+      "gpu": "A100-80GB",
+      "quant": "bf16",
+      "tp": 1,
+      "workload": "Chat assistant",
+      "slo": {
+        "ttft_p90_s": 0.5,
+        "tpot_s": 0.05
+      },
+      "total_rps": 5,
+      "replicas": 1,
+      "curves": "predicted from 013-a100-80gb-vllm-bf16",
+      "serve": {
+        "prompt": 1024,
+        "output": 256,
+        "rps": 5.0,
+        "max_num_seqs": 82
+      },
+      "ttft_p50_s": 0.13912854174854122,
+      "ttft_p90_s": 0.28971383935511485,
+      "ttft_margin": 1.065626006247357,
+      "tpot_s": 0.027668948841330962,
+      "busy_batch": 36
+    },
+    "Granite-3.1-8B-Instruct|Long-context interactive|H100|fp8|tp1": {
+      "model": "Granite-3.1-8B-Instruct",
+      "gpu": "H100",
+      "quant": "fp8",
+      "tp": 1,
+      "workload": "Long-context interactive",
+      "slo": {
+        "ttft_p90_s": 0.3,
+        "tpot_s": 0.03
+      },
+      "total_rps": 20,
+      "replicas": 2,
+      "curves": "036-h100-vllm-granite8b-fp8",
+      "serve": {
+        "prompt": 2048,
+        "output": 256,
+        "rps": 10.0,
+        "max_num_seqs": 80
+      },
+      "ttft_p50_s": 0.1046135527912431,
+      "ttft_p90_s": 0.21905651072870808,
+      "ttft_margin": 1.0,
+      "tpot_s": 0.025154394788584333,
+      "busy_batch": 65
+    },
+    "Qwen2.5-32B-Instruct|Chat assistant|H100|fp8|tp1": {
+      "model": "Qwen2.5-32B-Instruct",
+      "gpu": "H100",
+      "quant": "fp8",
+      "tp": 1,
+      "workload": "Chat assistant",
+      "slo": {
+        "ttft_p90_s": 0.5,
+        "tpot_s": 0.05
+      },
+      "total_rps": 5,
+      "replicas": 1,
+      "curves": "037-h100-vllm-qwen32b-fp8",
+      "serve": {
+        "prompt": 1024,
+        "output": 256,
+        "rps": 5.0,
+        "max_num_seqs": 86
+      },
+      "ttft_p50_s": 0.13445973516447235,
+      "ttft_p90_s": 0.25961166639803523,
+      "ttft_margin": 1.0,
+      "tpot_s": 0.03211551876691772,
+      "busy_batch": 42
+    },
+    "Qwen2.5-32B-Instruct|Long-context interactive|H100|fp8|tp2": {
+      "model": "Qwen2.5-32B-Instruct",
+      "gpu": "H100",
+      "quant": "fp8",
+      "tp": 2,
+      "workload": "Long-context interactive",
+      "slo": {
+        "ttft_p90_s": 0.3,
+        "tpot_s": 0.03
+      },
+      "total_rps": 20,
+      "replicas": 5,
+      "curves": "predicted from 017-h100-vllm-fp8",
+      "serve": {
+        "prompt": 2048,
+        "output": 256,
+        "rps": 4.0,
+        "max_num_seqs": 44
+      },
+      "ttft_p50_s": 0.13760774062184522,
+      "ttft_p90_s": 0.24944173440704204,
+      "ttft_margin": 1.0,
+      "tpot_s": 0.017032522732427214,
+      "busy_batch": 18
+    }
+  }
+}

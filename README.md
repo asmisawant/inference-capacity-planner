@@ -4,7 +4,7 @@ Open-source GPU serving capacity planner: roofline predictions validated against
 
 Given a model, latency targets (TTFT / TPOT) and traffic, the planner will recommend a GPU, a serving config (engine, quantization, batch size, KV-cache size) and a cost per million tokens. A roofline model built from GPU specs predicts performance; benchmarks on Modal validate and calibrate it.
 
-**Status: step 4 of the plan** — GPU spec table and roofline formulas (step 1), benchmarks on Modal that measure how far real hardware and vLLM fall short of the roofline (step 2), a calibrated recommender validated under real load (step 3), and predictions for models and multi-GPU setups we never benchmarked, checked against runs afterwards (step 4). Roofline numbers are *ideal bounds*; measured numbers are labelled and link to the GitHub Actions run that produced them.
+**Status: step 5 of the plan** — GPU spec table and roofline formulas (step 1), benchmarks on Modal that measure how far real hardware and vLLM fall short of the roofline (step 2), a calibrated recommender validated under real load (step 3), predictions for models and multi-GPU setups we never benchmarked, checked against runs afterwards (step 4), and load tests of the resulting recommendations (step 5). Roofline numbers are *ideal bounds*; measured numbers are labelled and link to the GitHub Actions run that produced them.
 
 ## Rule for numbers in this README
 
@@ -94,7 +94,7 @@ GPU runs are launched by GitHub Actions (`.github/workflows/bench.yml`) on [Moda
 - **Results:** each run is committed as `results/<id>.json` together with the tables below, which the workflow regenerates.
 
 Spend so far: <!-- BEGIN GENERATED: bench_spend -->
-49 runs (36 succeeded), at most **$7.89** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
+54 runs (41 succeeded), at most **$10.42** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
 <!-- END GENERATED: bench_spend -->
 
 Configurations that did not run: **FP8 on A100-80GB** fails at vLLM 0.30.0 engine startup twice, in two different places: in torch.compile (run 016, `InductorError: auto_functionalized was not removed`) and, with the eager compile backend, in the CUTLASS FP8 GEMM (run 022, `cutlass_scaled_mm_sm80_epilogue`). The A100 has no FP8 tensor cores, so this is vLLM's weight-only FP8 path. Not retried.
@@ -354,18 +354,18 @@ How the model got here, one serve run at a time:
 4. **All six runs:** the step wait was added, and the waits are now summed as distributions rather than as percentiles. Median TTFT was still low by a near-constant 19–70 ms on every run.
 5. **Runs 029–031** were new configurations: A100-80GB, H100 FP8, and L4 with shorter prompts. TPOT held up (+1% to +11%), but the p90 TTFT came in up to 32% low. The H100 margin of ×1.00 would not have covered it. The fixed serving overhead explains the near-constant gap from step 4. Fitted on runs 023–028 only, it brings the hold-out runs to within −6% to +10% (table below).
 
-The overhead and margins the recommender uses, fitted on all serve runs:
+The overhead and margins the recommender uses, fitted on all serve runs of every model (including the step 5 load tests below):
 
 <!-- BEGIN GENERATED: ttft_margins -->
-Serving overhead: **33.5 ms** (median measured − predicted p50 TTFT over 9 serve runs).
+Serving overhead: **42.3 ms** (median measured − predicted p50 TTFT over 14 serve runs).
 
 | GPU | Measured / predicted p90 TTFT per serve run | Margin applied |
 |---|---|---:|
-| L4 | 023-l4-serve-fp8-chat ×1.13, 027-l4-serve-fp8-chat ×1.31, 031-l4-serve-fp8-short ×0.91 | ×1.31 |
-| A10G | 028-a10g-serve-awq-chat ×1.06 | ×1.06 |
-| A100-40GB | 024-a100-40gb-serve-bf16-chat ×0.98 | ×1.00 |
-| A100-80GB | 029-a100-80gb-serve-bf16-longctx ×1.07 | ×1.07 |
-| H100 | 025-h100-serve-bf16-longctx ×0.81, 026-h100-serve-bf16-offline ×0.73, 030-h100-serve-fp8-longout ×0.91 | ×1.00 |
+| L4 | 023-l4-serve-fp8-chat ×1.13, 027-l4-serve-fp8-chat ×1.28, 031-l4-serve-fp8-short ×0.89 | ×1.28 |
+| A10G | 028-a10g-serve-awq-chat ×1.04 | ×1.04 |
+| A100-40GB | 024-a100-40gb-serve-bf16-chat ×0.95, 041-a100-40gb-serve-granite8b-bf16-chat ×1.05 | ×1.05 |
+| A100-80GB | 029-a100-80gb-serve-bf16-longctx ×1.03, 042-a100-80gb-serve-granite8b-bf16-chat ×1.06 | ×1.06 |
+| H100 | 025-h100-serve-bf16-longctx ×0.78, 026-h100-serve-bf16-offline ×0.69, 030-h100-serve-fp8-longout ×0.83, 043-h100-serve-granite8b-fp8-longctx ×0.80, 044-h100-serve-qwen32b-fp8-chat ×1.28, 045-h100x2-serve-qwen32b-fp8-longctx ×1.26 | ×1.28 |
 <!-- END GENERATED: ttft_margins -->
 
 **Hold-out check:** the calibration is refitted without runs 029–031, then used to predict them.
@@ -387,9 +387,9 @@ The cheapest $/hr wins; ties go to less quantization, then lower TPOT.
 
 | GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| A100-40GB | bf16 | 1 | 2.10 | 0.091 | 0.455 | 29 (110) | 222 (×1.00) | 22.0 | 360,528 | 012-a100-40gb-vllm-bf16 |
-| A100-80GB | bf16 | 1 | 2.50 | 0.108 | 0.542 | 23 (117) | 223 (×1.07) | 17.6 | 1,045,408 | 013-a100-80gb-vllm-bf16 |
-| A100-80GB | awq-int4 | 1 | 2.50 | 0.108 | 0.542 | 16 (89) | 303 (×1.07) | 11.9 | 1,231,408 | 020-a100-80gb-vllm-awq-int4 |
+| A100-40GB | bf16 | 1 | 2.10 | 0.091 | 0.455 | 29 (110) | 242 (×1.05) | 22.0 | 360,528 | 012-a100-40gb-vllm-bf16 |
+| A100-80GB | bf16 | 1 | 2.50 | 0.108 | 0.542 | 23 (117) | 230 (×1.06) | 17.6 | 1,045,408 | 013-a100-80gb-vllm-bf16 |
+| A100-80GB | awq-int4 | 1 | 2.50 | 0.108 | 0.542 | 16 (89) | 310 (×1.06) | 11.9 | 1,231,408 | 020-a100-80gb-vllm-awq-int4 |
 
 Not feasible: L4 bf16 (misses SLO: TPOT 57.6 ms at batch 1).
 
@@ -397,9 +397,9 @@ Not feasible: L4 bf16 (misses SLO: TPOT 57.6 ms at batch 1).
 
 | GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| H100 | bf16 | 2 | 7.90 | 0.048 | 0.429 | 42 (98) | 201 (×1.00) | 16.1 | 1,035,104 | 014-h100-vllm-bf16 |
-| H100 | fp8 | 2 | 7.90 | 0.048 | 0.429 | 23 (131) | 121 (×1.00) | 8.7 | 1,149,168 | 017-h100-vllm-fp8 |
-| H100 | awq-int4 | 2 | 7.90 | 0.048 | 0.429 | 38 (93) | 196 (×1.00) | 14.6 | 1,203,072 | 021-h100-vllm-awq-int4 |
+| H100 | bf16 | 2 | 7.90 | 0.048 | 0.429 | 42 (98) | 269 (×1.28) | 16.1 | 1,035,104 | 014-h100-vllm-bf16 |
+| H100 | fp8 | 2 | 7.90 | 0.048 | 0.429 | 23 (131) | 167 (×1.28) | 8.7 | 1,149,168 | 017-h100-vllm-fp8 |
+| H100 | awq-int4 | 2 | 7.90 | 0.048 | 0.429 | 38 (93) | 263 (×1.28) | 14.6 | 1,203,072 | 021-h100-vllm-awq-int4 |
 
 Not feasible: A10G bf16 (misses SLO: TTFT 446 ms at batch 1, TPOT 34.2 ms at batch 1); L4 bf16 (misses SLO: TTFT 563 ms at batch 1, TPOT 58.8 ms at batch 1); L4 fp8 (misses SLO: TTFT 438 ms at batch 1, TPOT 36.4 ms at batch 1); A10G awq-int4 (misses SLO: TTFT 465 ms at batch 1); L4 awq-int4 (misses SLO: TTFT 595 ms at batch 1).
 
@@ -407,9 +407,9 @@ Not feasible: A10G bf16 (misses SLO: TTFT 446 ms at batch 1, TPOT 34.2 ms at bat
 
 | GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| H100 | bf16 | 2 | 7.90 | 0.043 | 0.086 | 222 (256) | 126 (×1.00) | 17.3 | 1,035,104 | 014-h100-vllm-bf16 |
-| H100 | fp8 | 2 | 7.90 | 0.043 | 0.086 | 124 (256) | 78 (×1.00) | 9.6 | 1,149,168 | 017-h100-vllm-fp8 |
-| A100-40GB | bf16 | 5 | 10.49 | 0.057 | 0.114 | 200 (256) | 252 (×1.00) | 38.9 | 360,528 | 012-a100-40gb-vllm-bf16 |
+| H100 | bf16 | 2 | 7.90 | 0.043 | 0.086 | 222 (256) | 174 (×1.28) | 17.3 | 1,035,104 | 014-h100-vllm-bf16 |
+| H100 | fp8 | 2 | 7.90 | 0.043 | 0.086 | 124 (256) | 111 (×1.28) | 9.6 | 1,149,168 | 017-h100-vllm-fp8 |
+| A100-40GB | bf16 | 5 | 10.49 | 0.057 | 0.114 | 200 (256) | 274 (×1.05) | 38.9 | 360,528 | 012-a100-40gb-vllm-bf16 |
 <!-- END GENERATED: recommend_examples -->
 
 ### Validation under real load
@@ -496,9 +496,9 @@ Once a model has been run, the recommender uses the measured curves. Every other
 
 | GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| A100-40GB | bf16 | 1 | 2.10 | 0.091 | 0.455 | 51 (73) | 337 (×1.00) | 39.3 | 128,784 | 034-a100-40gb-vllm-granite8b-bf16 |
-| A100-80GB | bf16 | 1 | 2.50 | 0.108 | 0.542 | 36 (82) | 309 (×1.07) | 27.7 | 359,109 | predicted ² from 013-a100-80gb-vllm-bf16 |
-| H100 | bf16 | 1 | 3.95 | 0.171 | 0.857 | 13 (221) | 88 (×1.00) | 9.5 | 360,704 | 035-h100-vllm-granite8b-bf16 |
+| A100-40GB | bf16 | 1 | 2.10 | 0.091 | 0.455 | 51 (73) | 364 (×1.05) | 39.3 | 128,784 | 034-a100-40gb-vllm-granite8b-bf16 |
+| A100-80GB | bf16 | 1 | 2.50 | 0.108 | 0.542 | 36 (82) | 316 (×1.06) | 27.7 | 359,109 | predicted ² from 013-a100-80gb-vllm-bf16 |
+| H100 | bf16 | 1 | 3.95 | 0.171 | 0.857 | 13 (221) | 124 (×1.28) | 9.5 | 360,704 | 035-h100-vllm-granite8b-bf16 |
 
 Not feasible: L4 bf16 (misses SLO: TPOT 66.7 ms at batch 1).
 
@@ -508,14 +508,58 @@ Not feasible: L4 bf16 (misses SLO: TPOT 66.7 ms at batch 1).
 
 | GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| H100 | fp8 | 1 | 3.95 | 0.171 | 0.857 | 42 (86) | 260 (×1.00) | 32.1 | 147,328 | 037-h100-vllm-qwen32b-fp8 |
-| 2× H100 | bf16 | 1 | 7.90 | 0.343 | 1.714 | 30 (114) | 202 (×1.00) | 22.9 | 319,280 | 039-h100x2-vllm-qwen32b-bf16 |
-| 2× H100 | fp8 | 1 | 7.90 | 0.343 | 1.714 | 17 (165) | 129 (×1.00) | 12.6 | 438,235 | predicted ² from 017-h100-vllm-fp8 |
+| H100 | fp8 | 1 | 3.95 | 0.171 | 0.857 | 42 (86) | 345 (×1.28) | 32.1 | 147,328 | 037-h100-vllm-qwen32b-fp8 |
+| 2× H100 | bf16 | 1 | 7.90 | 0.343 | 1.714 | 30 (114) | 271 (×1.28) | 22.9 | 319,280 | 039-h100x2-vllm-qwen32b-bf16 |
+| 2× H100 | fp8 | 1 | 7.90 | 0.343 | 1.714 | 17 (165) | 176 (×1.28) | 12.6 | 438,235 | predicted ² from 017-h100-vllm-fp8 |
 
 Not feasible: A10G awq-int4 (misses SLO: TTFT 1089 ms at batch 1); L4 awq-int4 (misses SLO: TTFT 1442 ms at batch 1, TPOT 64.4 ms at batch 1).
 
 ² never run for this model: curves transferred from the named Qwen2.5-7B run (see "Predicting models we never benchmarked").
 <!-- END GENERATED: recommend_other_models -->
+
+### Do those recommendations hold under real load?
+
+The table above checks the raw curves. This checks what a user actually gets: the
+recommender's full answer for a model it was never tuned on, under `vllm serve` with
+Poisson arrivals. That answer includes the replica count, `max_num_seqs`, and the
+queueing model, serving overhead and p90 margins learned from the Qwen-7B serve runs.
+
+Five setups were tested, each the recommender's first or second choice for a README
+example workload. Two of them use curves that were only transferred from Qwen-7B, never
+measured for that model, and one runs on two GPUs per replica. One replica is
+load-tested at its share of the traffic.
+
+The predictions were frozen in `predictions/serve.json` before the runs, and this table
+reads only that file. "Targets met" means the measured p90 TTFT and median TPOT are within
+the workload's targets.
+
+<!-- BEGIN GENERATED: serve_check -->
+| Model | Workload | Replica | Curves | Load per replica (req/s, max_num_seqs) | TTFT ms p50: predicted / measured | TTFT ms p90: predicted / measured (error) | p90 × margin vs target | TPOT ms: predicted / measured (target) | Targets met | Run |
+|---|---|---|---|---|---:|---:|---|---:|---|---|
+| Granite-3.1-8B-Instruct | Chat assistant (1 replica) | A100-40GB bf16 | 034-a100-40gb-vllm-granite8b-bf16 | 5, 73 | 157 / 215 | 337 / 364 (-7%) | 337 vs 500 | 39.3 / 38.9 (50) | yes | [041-a100-40gb-serve-granite8b-bf16-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
+| Granite-3.1-8B-Instruct | Chat assistant (1 replica) | A100-80GB bf16 | predicted from 013-a100-80gb-vllm-bf16 | 5, 82 | 139 / 170 | 290 / 316 (-8%) | 309 vs 500 | 27.7 / 30.0 (50) | yes | [042-a100-80gb-serve-granite8b-bf16-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
+| Granite-3.1-8B-Instruct | Long-context interactive (2 replicas) | H100 fp8 | 036-h100-vllm-granite8b-fp8 | 10, 80 | 105 / 113 | 219 / 181 (+21%) | 219 vs 300 | 25.2 / 19.3 (30) | yes | [043-h100-serve-granite8b-fp8-longctx](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
+| Qwen2.5-32B-Instruct | Chat assistant (1 replica) | H100 fp8 | 037-h100-vllm-qwen32b-fp8 | 5, 86 | 134 / 188 | 260 / 345 (-25%) | 260 vs 500 | 32.1 / 33.7 (50) | yes | [044-h100-serve-qwen32b-fp8-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
+| Qwen2.5-32B-Instruct | Long-context interactive (5 replicas) | 2× H100 fp8 | predicted from 017-h100-vllm-fp8 | 4, 44 | 138 / 151 | 249 / 325 (-23%) | 249 vs 300 | 17.0 / 20.3 (30) | **no** | [045-h100x2-serve-qwen32b-fp8-longctx](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
+
+Over 5 runs, the median |error| is 18% for p50 TTFT, 21% for p90 TTFT and 8% for TPOT.
+<!-- END GENERATED: serve_check -->
+
+What the five runs (041–045) show:
+
+- **Four of five recommendations met their targets**, including Granite on an A100-80GB.
+  vLLM never ran Granite on that GPU, so its curves came from Qwen-7B. TPOT and the A100
+  p90 TTFTs land close.
+- **The miss is the H100 safety margin, not the curves.** Both Qwen-32B runs on H100
+  had a p90 TTFT about 1.3× the prediction. The ×1.00 H100 margin had been learned from
+  Qwen-7B runs only, where the model was conservative, and it didn't carry over to a 4×
+  larger model. One of the two runs still had headroom; the long-context one
+  (2× H100 per replica) went over its 300 ms target.
+- **Fix:** the serving overhead and per-GPU margins now learn from serve runs of every
+  model, with each run predicted from the curves the recommender would use for it. The
+  H100 margin rises accordingly (see the margin table above). For the README's
+  example workloads, this changes only the failed case, which now gets one more replica.
+  The frozen table above still shows the predictions as they were before the runs.
 
 ## Development
 
@@ -532,3 +576,4 @@ python -m capacity_planner.report --update-readme  # regenerate README tables
 2. **Benchmarks on Modal via GitHub Actions** (vLLM first, then SGLang; Qwen2.5-7B-Instruct; budget < $40) to measure memory overhead and achieved FLOPs/bandwidth (done; see the tables above).
 3. **Calibrate the roofline and build the recommender**: model + SLOs + traffic → GPU, engine, quantization, batch size, KV-cache size, $/1M tokens; validated with `vllm serve` under load (done).
 4. **Predict unmeasured models and multi-GPU setups**, then check the predictions against new runs (done).
+5. **Load-test recommendations for those models** under `vllm serve` (done).

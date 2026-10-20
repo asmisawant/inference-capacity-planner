@@ -94,7 +94,7 @@ GPU runs are launched by GitHub Actions (`.github/workflows/bench.yml`) on [Moda
 - **Results:** each run is committed as `results/<id>.json` together with the tables below, which the workflow regenerates.
 
 Spend so far: <!-- BEGIN GENERATED: bench_spend -->
-40 runs (27 succeeded), at most **$4.05** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
+49 runs (36 succeeded), at most **$7.89** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
 <!-- END GENERATED: bench_spend -->
 
 Configurations that did not run: **FP8 on A100-80GB** fails at vLLM 0.30.0 engine startup twice, in two different places: in torch.compile (run 016, `InductorError: auto_functionalized was not removed`) and, with the eager compile backend, in the CUTLASS FP8 GEMM (run 022, `cutlass_scaled_mm_sm80_epilogue`). The A100 has no FP8 tensor cores, so this is vLLM's weight-only FP8 path. Not retried.
@@ -454,15 +454,15 @@ the goalposts.
 <!-- BEGIN GENERATED: transfer_check -->
 | Model | GPUs | Quant | KV tokens: predicted / measured | TTFT ms at 1024: predicted / measured | TTFT worst error: transfer / roofline | Decode step ms at batch 1: predicted / measured | Decode worst error: transfer / roofline | Run |
 |---|---|---|---:|---:|---:|---:|---:|---|
-| Granite-3.1-8B-Instruct | L4 | bf16 | 14,521 / – | 318 / – | – | 61.4 / – | – | not run yet |
-| Granite-3.1-8B-Instruct | L4 | fp8 | 68,685 / – | 242 / – | – | 32.9 / – | – | not run yet |
-| Granite-3.1-8B-Instruct | A100-40GB | bf16 | 119,379 / – | 81 / – | – | 13.2 / – | – | not run yet |
-| Granite-3.1-8B-Instruct | H100 | bf16 | 355,505 / – | 29 / – | – | 6.6 / – | – | not run yet |
-| Granite-3.1-8B-Instruct | H100 | fp8 | 404,229 / – | 21 / – | – | 4.1 / – | – | not run yet |
-| Qwen2.5-32B-Instruct | H100 | fp8 | 153,653 / – | 76 / – | – | 16.6 / – | – | not run yet |
-| Qwen2.5-32B-Instruct | A100-80GB | awq-int4 | 216,870 / – | 417 / – | – | 16.4 / – | – | not run yet |
-| Qwen2.5-32B-Instruct | 2× H100 | bf16 | 319,090 / – | 58 / – | – | 13.2 / – | – | not run yet |
-| Qwen2.5-32B-Instruct | 2× A100-80GB | bf16 | 323,595 / – | 158 / – | – | 21.3 / – | – | not run yet |
+| Granite-3.1-8B-Instruct | L4 | bf16 | 14,521 / 23,824 | 318 / 350 | -13% / -23% | 61.4 / 65.0 | -8% / -8% | [032-l4-vllm-granite8b-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
+| Granite-3.1-8B-Instruct | L4 | fp8 | 68,685 / 71,760 | 242 / 234 | -11% / -40% | 32.9 / 38.9 | -15% / -19% | [033-l4-vllm-granite8b-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
+| Granite-3.1-8B-Instruct | A100-40GB | bf16 | 119,379 / 128,784 | 81 / 83 | -10% / -49% | 13.2 / 14.2 | -7% / -22% | [034-a100-40gb-vllm-granite8b-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
+| Granite-3.1-8B-Instruct | H100 | bf16 | 355,505 / 360,704 | 29 / 29 | -5% / -44% | 6.6 / 7.0 | -6% / -19% | [035-h100-vllm-granite8b-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
+| Granite-3.1-8B-Instruct | H100 | fp8 | 404,229 / 409,168 | 21 / 21 | -5% / -62% | 4.1 / 4.7 | -13% / -37% | [036-h100-vllm-granite8b-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
+| Qwen2.5-32B-Instruct | H100 | fp8 | 153,653 / 147,328 | 76 / 70 | +18% / -48% | 16.6 / 14.5 | +16% / -21% | [037-h100-vllm-qwen32b-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
+| Qwen2.5-32B-Instruct | A100-80GB | awq-int4 | 216,870 / 213,408 | 417 / 368 | +13% / -40% | 16.4 / 14.6 | -26% / -55% | [038-a100-80gb-vllm-qwen32b-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
+| Qwen2.5-32B-Instruct | 2× H100 | bf16 | 319,090 / 319,280 | 58 / 61 | -11% / -37% | 13.2 / 13.7 | -12% / -28% | [039-h100x2-vllm-qwen32b-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
+| Qwen2.5-32B-Instruct | 2× A100-80GB | bf16 | 323,595 / 331,664 | 158 / 157 | -32% / -52% | 21.3 / 23.6 | -19% / -42% | [040-a100-80gbx2-vllm-qwen32b-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
 <!-- END GENERATED: transfer_check -->
 
 ## Development

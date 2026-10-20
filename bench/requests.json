@@ -364,6 +364,19 @@
         "max_num_seqs": 44
       },
       "tp": 2
+    },
+    {
+      "id": "046-h100-serve-qwen32b-fp8-longctx",
+      "gpu": "H100",
+      "suite": "serve",
+      "quant": "fp8",
+      "model": "Qwen2.5-32B-Instruct",
+      "serve": {
+        "prompt": 2048,
+        "output": 256,
+        "rps": 0.952,
+        "max_num_seqs": 20
+      }
     }
   ]
 }

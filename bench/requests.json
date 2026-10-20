@@ -519,6 +519,13 @@
         "rps": 5.0,
         "max_num_seqs": 70
       }
+    },
+    {
+      "id": "066-a100-40gb-sglang-granite8b-bf16",
+      "gpu": "A100-40GB",
+      "suite": "sglang",
+      "quant": "bf16",
+      "model": "Granite-3.1-8B-Instruct"
     }
   ]
 }

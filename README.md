@@ -94,7 +94,7 @@ GPU runs are launched by GitHub Actions (`.github/workflows/bench.yml`) on [Moda
 - **Results:** each run is committed as `results/<id>.json` together with the tables below, which the workflow regenerates.
 
 Spend so far: <!-- BEGIN GENERATED: bench_spend -->
-56 runs (42 succeeded), at most **$10.96** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
+57 runs (42 succeeded), at most **$11.02** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
 <!-- END GENERATED: bench_spend -->
 
 Configurations that did not run: **FP8 on A100-80GB** fails at vLLM 0.30.0 engine startup twice, in two different places: in torch.compile (run 016, `InductorError: auto_functionalized was not removed`) and, with the eager compile backend, in the CUTLASS FP8 GEMM (run 022, `cutlass_scaled_mm_sm80_epilogue`). The A100 has no FP8 tensor cores, so this is vLLM's weight-only FP8 path. Not retried.

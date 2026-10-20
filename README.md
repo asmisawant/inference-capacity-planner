@@ -94,7 +94,7 @@ GPU runs are launched by GitHub Actions (`.github/workflows/bench.yml`) on [Moda
 - **Results:** each run is committed as `results/<id>.json` together with the tables below, which the workflow regenerates.
 
 Spend so far: <!-- BEGIN GENERATED: bench_spend -->
-49 runs (36 succeeded), at most **$7.89** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
+54 runs (41 succeeded), at most **$10.42** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
 <!-- END GENERATED: bench_spend -->
 
 Configurations that did not run: **FP8 on A100-80GB** fails at vLLM 0.30.0 engine startup twice, in two different places: in torch.compile (run 016, `InductorError: auto_functionalized was not removed`) and, with the eager compile backend, in the CUTLASS FP8 GEMM (run 022, `cutlass_scaled_mm_sm80_epilogue`). The A100 has no FP8 tensor cores, so this is vLLM's weight-only FP8 path. Not retried.
@@ -536,11 +536,13 @@ the workload's targets.
 <!-- BEGIN GENERATED: serve_check -->
 | Model | Workload | Replica | Curves | Load per replica (req/s, max_num_seqs) | TTFT ms p50: predicted / measured | TTFT ms p90: predicted / measured (error) | p90 × margin vs target | TPOT ms: predicted / measured (target) | Targets met | Run |
 |---|---|---|---|---|---:|---:|---|---:|---|---|
-| Granite-3.1-8B-Instruct | Chat assistant (1 replica) | A100-40GB bf16 | 034-a100-40gb-vllm-granite8b-bf16 | 5, 73 | 157 / – | 337 / – | 337 vs 500 | 39.3 / – (50) | – | not run yet |
-| Granite-3.1-8B-Instruct | Chat assistant (1 replica) | A100-80GB bf16 | predicted from 013-a100-80gb-vllm-bf16 | 5, 82 | 139 / – | 290 / – | 309 vs 500 | 27.7 / – (50) | – | not run yet |
-| Granite-3.1-8B-Instruct | Long-context interactive (2 replicas) | H100 fp8 | 036-h100-vllm-granite8b-fp8 | 10, 80 | 105 / – | 219 / – | 219 vs 300 | 25.2 / – (30) | – | not run yet |
-| Qwen2.5-32B-Instruct | Chat assistant (1 replica) | H100 fp8 | 037-h100-vllm-qwen32b-fp8 | 5, 86 | 134 / – | 260 / – | 260 vs 500 | 32.1 / – (50) | – | not run yet |
-| Qwen2.5-32B-Instruct | Long-context interactive (5 replicas) | 2× H100 fp8 | predicted from 017-h100-vllm-fp8 | 4, 44 | 138 / – | 249 / – | 249 vs 300 | 17.0 / – (30) | – | not run yet |
+| Granite-3.1-8B-Instruct | Chat assistant (1 replica) | A100-40GB bf16 | 034-a100-40gb-vllm-granite8b-bf16 | 5, 73 | 157 / 215 | 337 / 364 (-7%) | 337 vs 500 | 39.3 / 38.9 (50) | yes | [041-a100-40gb-serve-granite8b-bf16-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
+| Granite-3.1-8B-Instruct | Chat assistant (1 replica) | A100-80GB bf16 | predicted from 013-a100-80gb-vllm-bf16 | 5, 82 | 139 / 170 | 290 / 316 (-8%) | 309 vs 500 | 27.7 / 30.0 (50) | yes | [042-a100-80gb-serve-granite8b-bf16-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
+| Granite-3.1-8B-Instruct | Long-context interactive (2 replicas) | H100 fp8 | 036-h100-vllm-granite8b-fp8 | 10, 80 | 105 / 113 | 219 / 181 (+21%) | 219 vs 300 | 25.2 / 19.3 (30) | yes | [043-h100-serve-granite8b-fp8-longctx](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
+| Qwen2.5-32B-Instruct | Chat assistant (1 replica) | H100 fp8 | 037-h100-vllm-qwen32b-fp8 | 5, 86 | 134 / 188 | 260 / 345 (-25%) | 260 vs 500 | 32.1 / 33.7 (50) | yes | [044-h100-serve-qwen32b-fp8-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
+| Qwen2.5-32B-Instruct | Long-context interactive (5 replicas) | 2× H100 fp8 | predicted from 017-h100-vllm-fp8 | 4, 44 | 138 / 151 | 249 / 325 (-23%) | 249 vs 300 | 17.0 / 20.3 (30) | **no** | [045-h100x2-serve-qwen32b-fp8-longctx](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39352622758) |
+
+Over 5 runs, the median |error| is 18% for p50 TTFT, 21% for p90 TTFT and 8% for TPOT.
 <!-- END GENERATED: serve_check -->
 
 ## Development

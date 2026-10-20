@@ -94,7 +94,7 @@ GPU runs are launched by GitHub Actions (`.github/workflows/bench.yml`) on [Moda
 - **Results:** each run is committed as `results/<id>.json` together with the tables below, which the workflow regenerates.
 
 Spend so far: <!-- BEGIN GENERATED: bench_spend -->
-69 runs (54 succeeded), at most **$13.73** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
+70 runs (55 succeeded), at most **$13.87** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
 <!-- END GENERATED: bench_spend -->
 
 Configurations that did not run: **FP8 on A100-80GB** fails at vLLM 0.30.0 engine startup twice, in two different places: in torch.compile (run 016, `InductorError: auto_functionalized was not removed`) and, with the eager compile backend, in the CUTLASS FP8 GEMM (run 022, `cutlass_scaled_mm_sm80_epilogue`). The A100 has no FP8 tensor cores, so this is vLLM's weight-only FP8 path. Not retried.
@@ -388,10 +388,12 @@ The cheapest $/hr wins; ties go to less quantization, then lower TPOT.
 | GPU | Engine | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | A100-40GB | vLLM | bf16 | 1 | 2.10 | 0.091 | 0.455 | 29 (110) | 242 (×1.05) | 22.0 | 360,528 | 012-a100-40gb-vllm-bf16 |
+| A100-40GB | SGLang ³ | bf16 | 1 | 2.10 | 0.091 | 0.455 | 31 (93) | 286 (×1.05) | 23.8 | 333,296 | 061-a100-40gb-sglang-bf16 |
 | A100-80GB | vLLM | bf16 | 1 | 2.50 | 0.108 | 0.542 | 23 (117) | 230 (×1.06) | 17.6 | 1,045,408 | 013-a100-80gb-vllm-bf16 |
-| A100-80GB | vLLM | awq-int4 | 1 | 2.50 | 0.108 | 0.542 | 16 (89) | 310 (×1.06) | 11.9 | 1,231,408 | 020-a100-80gb-vllm-awq-int4 |
 
 Not feasible: L4 vLLM bf16 (misses SLO: TPOT 57.6 ms at batch 1); L4 SGLang bf16 (misses SLO: TPOT 57.3 ms at batch 1); L4 SGLang awq-int4 (queueing keeps p90 TTFT above target).
+
+³ no load test on this engine yet: serving overhead and p90 margins are borrowed from vLLM's serve runs.
 
 **Long-context interactive:** 2048-token prompts, 256-token outputs, 20 requests/s, TTFT ≤ 300 ms, TPOT ≤ 30 ms.
 
@@ -499,8 +501,8 @@ Once a model has been run, the recommender uses the measured curves. Every other
 | GPU | Engine | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | A100-40GB | vLLM | bf16 | 1 | 2.10 | 0.091 | 0.455 | 51 (73) | 364 (×1.05) | 39.3 | 128,784 | 034-a100-40gb-vllm-granite8b-bf16 |
+| A100-40GB | SGLang ³ | bf16 | 1 | 2.10 | 0.091 | 0.455 | 53 (70) | 415 (×1.05) | 40.9 | 109,875 | predicted ² from 061-a100-40gb-sglang-bf16 |
 | A100-80GB | vLLM | bf16 | 1 | 2.50 | 0.108 | 0.542 | 36 (82) | 316 (×1.06) | 27.7 | 359,109 | predicted ² from 013-a100-80gb-vllm-bf16 |
-| A100-80GB | SGLang ³ | bf16 | 1 | 2.50 | 0.108 | 0.542 | 47 (72) | 428 (×1.06) | 36.1 | 327,924 | predicted ² from 052-a100-80gb-sglang-bf16 |
 
 Not feasible: L4 vLLM bf16 (misses SLO: TPOT 66.7 ms at batch 1).
 
@@ -611,7 +613,7 @@ difference for both engines.
 | L4 | fp8 | 0.92 / 0.68 | 190,512 / 122,114 | 44 / 72 | 190 / 198 | 836 / 785 | 34.5 / 31.8 | 128: 63.7 / 62.7 | [015-l4-vllm-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) · [054-l4-sglang-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417) |
 | A10G | awq-int4 | 0.92 / 0.68 | 246,480 / 177,846 | 32 / 43 | 228 / 255 | 907 / 999 | 10.8 / 10.0 | 128: 45.9 / 45.8 | [019-a10g-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) · [058-a10g-sglang-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417) |
 | A10G | bf16 | 0.92 / 0.68 | 60,512 / 10,625 | 41 / 73 | 211 / 258 | 928 / 944 | 32.4 / 31.7 | 8: 33.4 / 33.4 | [011-a10g-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223773836) · [050-a10g-sglang-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417) |
-| A100-40GB | bf16 | 0.92 / – | 360,528 / – | 20 / – | 68 / – | 255 / – | 12.2 / – | – | [012-a100-40gb-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
+| A100-40GB | bf16 | 0.92 / 0.82 | 360,528 / 333,296 | 20 / 29 | 68 / 78 | 255 / 261 | 12.2 / 11.1 | 256: 26.5 / 27.7 | [012-a100-40gb-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) · [061-a100-40gb-sglang-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39399774264) |
 | A100-80GB | awq-int4 | 0.92 / 0.83 | 1,231,408 / 1,123,204 | 16 / 19 | 91 / 83 | 359 / 321 | 4.8 / 3.5 | 256: 33.0 / 27.5 | [020-a100-80gb-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) · [059-a100-80gb-sglang-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417) |
 | A100-80GB | bf16 | 0.92 / 0.83 | 1,045,408 / 956,292 | 15 / 26 | 68 / 82 | 260 / 290 | 10.1 / 9.5 | 256: 25.9 / 28.7 | [013-a100-80gb-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223773836) · [052-a100-80gb-sglang-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417) |
 | A100-80GB | fp8 | – / 0.83 | – / 1,061,837 | – / 21 | – / 85 | – / 327 | – / 5.6 | – | [055-a100-80gb-sglang-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417) |
@@ -630,6 +632,7 @@ The same correction fits as for vLLM (TTFT = c0 + c1 × roofline, decode = a × 
 | L4 | fp8 | 22.6 | 1.36 | 7% | 0.94 | 104 | 2% | 054-l4-sglang-fp8 |
 | A10G | awq-int4 | 13.1 | 1.37 | 4% | 0.82 | 197 | 14% | 058-a10g-sglang-awq-int4 |
 | A10G | bf16 | 41.4 | 1.26 | 10% | 1.04 | 128 | 1% | 050-a10g-sglang-bf16 |
+| A100-40GB | bf16 | 16.4 | 1.15 | 3% | 1.10 | 35 | 12% | 061-a100-40gb-sglang-bf16 |
 | A100-80GB | awq-int4 | 7.6 | 1.43 | 11% | 1.40 | 34 | 28% | 059-a100-80gb-sglang-awq-int4 |
 | A100-80GB | bf16 | 14.5 | 1.26 | 2% | 1.12 | 47 | 7% | 052-a100-80gb-sglang-bf16 |
 | A100-80GB | fp8 | 8.7 | 1.45 | 14% | 1.24 | 42 | 13% | 055-a100-80gb-sglang-fp8 |

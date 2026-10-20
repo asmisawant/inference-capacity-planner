@@ -87,8 +87,12 @@ class MeasuredConfig:
     tp: int = 1
     predicted = False  # see transfer.TransferredConfig
 
+    @property
+    def engine(self) -> str:
+        return self.run["suite"]
+
     def __post_init__(self):
-        v = self.run["result"]["vllm"]
+        v = self.run["result"][self.run["suite"]]  # "vllm" or "sglang": same schema
         t = sorted(v["ttft"], key=lambda t: t["prompt_len"])
         self._ttft_p = [float(x["prompt_len"]) for x in t]
         self._ttft_s = [x["ttft_s_median"] for x in t]
@@ -147,16 +151,22 @@ class MeasuredConfig:
 TP_DEGREES = (1, 2, 4, 8)
 
 
+ENGINES = ("vllm", "sglang")  # offline suite name = engine
+
+
 def measured_configs(
-    results: list[dict] | None = None, model: ModelSpec | None = None, tps: tuple[int, ...] = (1,)
+    results: list[dict] | None = None,
+    model: ModelSpec | None = None,
+    tps: tuple[int, ...] = (1,),
+    engine: str = "vllm",
 ) -> list[MeasuredConfig]:
-    """Configs vLLM ran for `model`. Single-GPU only by default (what the fits use)."""
+    """Configs `engine` ran for `model`. Single-GPU only by default (what the fits use)."""
     results = load_results() if results is None else results
     model = load_model() if model is None else model
     eff = gpu_efficiency(results)
     out = []
     for tp in tps:
-        for (gpu, quant), r in latest(results, "vllm", model.name, tp).items():
+        for (gpu, quant), r in latest(results, engine, model.name, tp).items():
             if gpu not in eff:
                 continue
             try:
@@ -166,10 +176,10 @@ def measured_configs(
     return out
 
 
-def fits(results: list[dict] | None = None, model: ModelSpec | None = None) -> list[Fit]:
+def fits(results: list[dict] | None = None, model: ModelSpec | None = None, engine: str = "vllm") -> list[Fit]:
     out = []
-    for c in measured_configs(results, model):
-        v = c.run["result"]["vllm"]
+    for c in measured_configs(results, model, engine=engine):
+        v = c.run["result"][engine]
         xt = [(1.0, c._roof_ttft(t["prompt_len"])) for t in v["ttft"]]
         yt = [t["ttft_s_median"] for t in v["ttft"]]
         c0, c1 = _lsq2(xt, yt)

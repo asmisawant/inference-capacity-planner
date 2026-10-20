@@ -461,6 +461,12 @@
       "gpu": "H100",
       "suite": "sglang",
       "quant": "awq-int4"
+    },
+    {
+      "id": "061-a100-40gb-sglang-bf16",
+      "gpu": "A100-40GB",
+      "suite": "sglang",
+      "quant": "bf16"
     }
   ]
 }

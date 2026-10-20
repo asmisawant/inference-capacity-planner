@@ -152,3 +152,14 @@ def test_load_results_defaults_model_and_tp(tmp_path):
     (tmp_path / "a.json").write_text(json.dumps(micro_record("a")))
     (r,) = v.load_results(tmp_path)
     assert (r["model"], r["tp"]) == ("Qwen2.5-7B-Instruct", 1)
+
+
+def test_runs_on_a_substituted_gpu_are_left_out(tmp_path):
+    ok = micro_record("ok")
+    swapped = micro_record("swapped")
+    swapped["gpu"] = "A100-40GB"
+    swapped["result"]["gpu_info"]["memory.total"] = "81920"  # an 80 GB card
+    (tmp_path / "ok.json").write_text(json.dumps(ok))
+    (tmp_path / "swapped.json").write_text(json.dumps(swapped))
+    assert [r["id"] for r in v.load_results(tmp_path)] == ["ok"]
+    assert not v.gpu_matches(swapped) and v.gpu_matches(ok)

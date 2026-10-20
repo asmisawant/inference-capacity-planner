@@ -21,7 +21,7 @@ def test_predictions_are_the_recommenders_answer():
     t = sc.TARGETS[0]
     w = sc.WORKLOADS[t.workload]
     recs = recommend(w, configs=candidate_configs(t.model), cal=serve_calibration(), model=t.model)
-    rec = next(r for r in recs if (r.gpu, r.quant, r.gpus_per_replica) == (t.gpu, t.quant, t.tp))
+    rec = next(r for r in recs if (r.gpu, r.quant, r.gpus_per_replica, r.engine) == (t.gpu, t.quant, t.tp, t.engine))
     p = sc.serve_prediction(t)
     assert rec.replicas == p["replicas"] and rec.max_num_seqs == p["serve"]["max_num_seqs"]
 

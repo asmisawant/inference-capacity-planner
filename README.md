@@ -385,31 +385,33 @@ The cheapest $/hr wins; ties go to less quantization, then lower TPOT.
 <!-- BEGIN GENERATED: recommend_examples -->
 **Chat assistant:** 1024-token prompts, 256-token outputs, 5 requests/s, TTFT ≤ 500 ms, TPOT ≤ 50 ms.
 
-| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| A100-40GB | bf16 | 1 | 2.10 | 0.091 | 0.455 | 29 (110) | 242 (×1.05) | 22.0 | 360,528 | 012-a100-40gb-vllm-bf16 |
-| A100-80GB | bf16 | 1 | 2.50 | 0.108 | 0.542 | 23 (117) | 230 (×1.06) | 17.6 | 1,045,408 | 013-a100-80gb-vllm-bf16 |
-| A100-80GB | awq-int4 | 1 | 2.50 | 0.108 | 0.542 | 16 (89) | 310 (×1.06) | 11.9 | 1,231,408 | 020-a100-80gb-vllm-awq-int4 |
+| GPU | Engine | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| A100-40GB | vLLM | bf16 | 1 | 2.10 | 0.091 | 0.455 | 29 (110) | 242 (×1.05) | 22.0 | 360,528 | 012-a100-40gb-vllm-bf16 |
+| A100-80GB | vLLM | bf16 | 1 | 2.50 | 0.108 | 0.542 | 23 (117) | 230 (×1.06) | 17.6 | 1,045,408 | 013-a100-80gb-vllm-bf16 |
+| A100-80GB | vLLM | awq-int4 | 1 | 2.50 | 0.108 | 0.542 | 16 (89) | 310 (×1.06) | 11.9 | 1,231,408 | 020-a100-80gb-vllm-awq-int4 |
 
-Not feasible: L4 bf16 (misses SLO: TPOT 57.6 ms at batch 1).
+Not feasible: L4 vLLM bf16 (misses SLO: TPOT 57.6 ms at batch 1); L4 SGLang bf16 (misses SLO: TPOT 57.3 ms at batch 1); L4 SGLang awq-int4 (queueing keeps p90 TTFT above target).
 
 **Long-context interactive:** 2048-token prompts, 256-token outputs, 20 requests/s, TTFT ≤ 300 ms, TPOT ≤ 30 ms.
 
-| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| H100 | bf16 | 2 | 7.90 | 0.048 | 0.429 | 42 (98) | 269 (×1.28) | 16.1 | 1,035,104 | 014-h100-vllm-bf16 |
-| H100 | fp8 | 2 | 7.90 | 0.048 | 0.429 | 23 (131) | 167 (×1.28) | 8.7 | 1,149,168 | 017-h100-vllm-fp8 |
-| H100 | awq-int4 | 2 | 7.90 | 0.048 | 0.429 | 38 (93) | 264 (×1.28) | 14.6 | 1,203,072 | 021-h100-vllm-awq-int4 |
+| GPU | Engine | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| H100 | vLLM | bf16 | 2 | 7.90 | 0.048 | 0.429 | 42 (98) | 269 (×1.28) | 16.1 | 1,035,104 | 014-h100-vllm-bf16 |
+| H100 | vLLM | fp8 | 2 | 7.90 | 0.048 | 0.429 | 23 (131) | 167 (×1.28) | 8.7 | 1,149,168 | 017-h100-vllm-fp8 |
+| H100 | vLLM | awq-int4 | 2 | 7.90 | 0.048 | 0.429 | 38 (93) | 264 (×1.28) | 14.6 | 1,203,072 | 021-h100-vllm-awq-int4 |
 
-Not feasible: A10G bf16 (misses SLO: TTFT 446 ms at batch 1, TPOT 34.2 ms at batch 1); L4 bf16 (misses SLO: TTFT 563 ms at batch 1, TPOT 58.8 ms at batch 1); L4 fp8 (misses SLO: TTFT 438 ms at batch 1, TPOT 36.4 ms at batch 1); A10G awq-int4 (misses SLO: TTFT 465 ms at batch 1); L4 awq-int4 (misses SLO: TTFT 595 ms at batch 1).
+Not feasible: A10G vLLM bf16 (misses SLO: TTFT 446 ms at batch 1, TPOT 34.2 ms at batch 1); L4 vLLM bf16 (misses SLO: TTFT 563 ms at batch 1, TPOT 58.8 ms at batch 1); L4 vLLM fp8 (misses SLO: TTFT 438 ms at batch 1, TPOT 36.4 ms at batch 1); A10G vLLM awq-int4 (misses SLO: TTFT 465 ms at batch 1); L4 vLLM awq-int4 (misses SLO: TTFT 595 ms at batch 1); A10G SGLang bf16 (misses SLO: TTFT 522 ms at batch 1, TPOT 33.8 ms at batch 1); L4 SGLang bf16 (misses SLO: TTFT 592 ms at batch 1, TPOT 58.5 ms at batch 1); L4 SGLang fp8 (misses SLO: TTFT 404 ms at batch 1, TPOT 33.6 ms at batch 1); A10G SGLang awq-int4 (misses SLO: TTFT 496 ms at batch 1); L4 SGLang awq-int4 (misses SLO: TTFT 742 ms at batch 1).
 
 **Offline batch generation:** 512-token prompts, 512-token outputs, 50 requests/s, TTFT ≤ 5000 ms, TPOT ≤ 200 ms.
 
-| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| H100 | bf16 | 2 | 7.90 | 0.043 | 0.086 | 222 (256) | 174 (×1.28) | 17.3 | 1,035,104 | 014-h100-vllm-bf16 |
-| H100 | fp8 | 2 | 7.90 | 0.043 | 0.086 | 124 (256) | 111 (×1.28) | 9.6 | 1,149,168 | 017-h100-vllm-fp8 |
-| A100-40GB | bf16 | 5 | 10.49 | 0.057 | 0.114 | 200 (256) | 274 (×1.05) | 38.9 | 360,528 | 012-a100-40gb-vllm-bf16 |
+| GPU | Engine | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| H100 | vLLM | bf16 | 2 | 7.90 | 0.043 | 0.086 | 222 (256) | 174 (×1.28) | 17.3 | 1,035,104 | 014-h100-vllm-bf16 |
+| H100 | vLLM | fp8 | 2 | 7.90 | 0.043 | 0.086 | 124 (256) | 111 (×1.28) | 9.6 | 1,149,168 | 017-h100-vllm-fp8 |
+| H100 | SGLang ³ | fp8 | 2 | 7.90 | 0.043 | 0.086 | 146 (256) | 133 (×1.28) | 11.3 | 1,062,434 | 056-h100-sglang-fp8 |
+
+³ no load test on this engine yet: serving overhead and p90 margins are borrowed from vLLM's serve runs.
 <!-- END GENERATED: recommend_examples -->
 
 ### Validation under real load
@@ -494,27 +496,31 @@ Once a model has been run, the recommender uses the measured curves. Every other
 <!-- BEGIN GENERATED: recommend_other_models -->
 **Granite-3.1-8B-Instruct, chat assistant:** 1024-token prompts, 256-token outputs, 5 requests/s, TTFT ≤ 500 ms, TPOT ≤ 50 ms.
 
-| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| A100-40GB | bf16 | 1 | 2.10 | 0.091 | 0.455 | 51 (73) | 364 (×1.05) | 39.3 | 128,784 | 034-a100-40gb-vllm-granite8b-bf16 |
-| A100-80GB | bf16 | 1 | 2.50 | 0.108 | 0.542 | 36 (82) | 316 (×1.06) | 27.7 | 359,109 | predicted ² from 013-a100-80gb-vllm-bf16 |
-| H100 | bf16 | 1 | 3.95 | 0.171 | 0.857 | 13 (221) | 124 (×1.28) | 9.5 | 360,704 | 035-h100-vllm-granite8b-bf16 |
+| GPU | Engine | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| A100-40GB | vLLM | bf16 | 1 | 2.10 | 0.091 | 0.455 | 51 (73) | 364 (×1.05) | 39.3 | 128,784 | 034-a100-40gb-vllm-granite8b-bf16 |
+| A100-80GB | vLLM | bf16 | 1 | 2.50 | 0.108 | 0.542 | 36 (82) | 316 (×1.06) | 27.7 | 359,109 | predicted ² from 013-a100-80gb-vllm-bf16 |
+| A100-80GB | SGLang ³ | bf16 | 1 | 2.50 | 0.108 | 0.542 | 47 (72) | 428 (×1.06) | 36.1 | 327,924 | predicted ² from 052-a100-80gb-sglang-bf16 |
 
-Not feasible: L4 bf16 (misses SLO: TPOT 66.7 ms at batch 1).
+Not feasible: L4 vLLM bf16 (misses SLO: TPOT 66.7 ms at batch 1).
 
 ² never run for this model: curves transferred from the named Qwen2.5-7B run (see "Predicting models we never benchmarked").
+
+³ no load test on this engine yet: serving overhead and p90 margins are borrowed from vLLM's serve runs.
 
 **Qwen2.5-32B-Instruct, chat assistant:** 1024-token prompts, 256-token outputs, 5 requests/s, TTFT ≤ 500 ms, TPOT ≤ 50 ms.
 
-| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| H100 | fp8 | 1 | 3.95 | 0.171 | 0.857 | 42 (86) | 345 (×1.28) | 32.1 | 147,328 | 037-h100-vllm-qwen32b-fp8 |
-| 2× H100 | bf16 | 1 | 7.90 | 0.343 | 1.714 | 30 (114) | 271 (×1.28) | 22.9 | 319,280 | 039-h100x2-vllm-qwen32b-bf16 |
-| 2× H100 | fp8 | 1 | 7.90 | 0.343 | 1.714 | 17 (165) | 177 (×1.28) | 12.6 | 438,235 | predicted ² from 017-h100-vllm-fp8 |
+| GPU | Engine | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| H100 | vLLM | fp8 | 1 | 3.95 | 0.171 | 0.857 | 42 (86) | 345 (×1.28) | 32.1 | 147,328 | 037-h100-vllm-qwen32b-fp8 |
+| H100 | SGLang ³ | fp8 | 1 | 3.95 | 0.171 | 0.857 | 45 (81) | 372 (×1.28) | 34.5 | 134,689 | predicted ² from 056-h100-sglang-fp8 |
+| 2× H100 | vLLM | bf16 | 1 | 7.90 | 0.343 | 1.714 | 30 (114) | 271 (×1.28) | 22.9 | 319,280 | 039-h100x2-vllm-qwen32b-bf16 |
 
-Not feasible: A10G awq-int4 (misses SLO: TTFT 1089 ms at batch 1); L4 awq-int4 (misses SLO: TTFT 1442 ms at batch 1, TPOT 64.4 ms at batch 1).
+Not feasible: A10G vLLM awq-int4 (misses SLO: TTFT 1089 ms at batch 1); L4 vLLM awq-int4 (misses SLO: TTFT 1442 ms at batch 1, TPOT 64.4 ms at batch 1).
 
 ² never run for this model: curves transferred from the named Qwen2.5-7B run (see "Predicting models we never benchmarked").
+
+³ no load test on this engine yet: serving overhead and p90 margins are borrowed from vLLM's serve runs.
 <!-- END GENERATED: recommend_other_models -->
 
 ### Do those recommendations hold under real load?

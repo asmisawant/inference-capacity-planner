@@ -87,7 +87,10 @@ def test_comparison_table():
 def test_candidate_configs():
     from capacity_planner.calibration import measured_configs
 
-    assert [c.key for c in tr.candidate_configs()] == [c.key for c in measured_configs()]  # Qwen-7B: measured only
+    # Qwen-7B: measured configs only, from both engines
+    assert [(c.engine, *c.key) for c in tr.candidate_configs()] == [
+        (c.engine, *c.key) for e in ("vllm", "sglang") for c in measured_configs(engine=e)
+    ]
     granite = tr.candidate_configs("Granite-3.1-8B-Instruct", [r for r in v.load_results() if r["model"] == DEFAULT_MODEL])
     keys = {c.key for c in granite}
     assert all(c.predicted for c in granite)

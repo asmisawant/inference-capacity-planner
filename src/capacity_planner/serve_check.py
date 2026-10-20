@@ -36,10 +36,12 @@ class ServeTarget:
     gpu: str
     quant: str
     tp: int = 1
+    engine: str = "vllm"
 
     @property
     def key(self) -> str:
-        return f"{self.model}|{self.workload}|{self.gpu}|{self.quant}|tp{self.tp}"
+        base = f"{self.model}|{self.workload}|{self.gpu}|{self.quant}|tp{self.tp}"
+        return base if self.engine == "vllm" else f"{base}|{self.engine}"
 
 
 # The recommender's first or second choice for each, mixing configs vLLM ran for the model
@@ -66,7 +68,7 @@ def serve_prediction(t: ServeTarget, results: list[dict] | None = None) -> dict:
     results = load_results() if results is None else results
     cal = serve_calibration(results)
     w = WORKLOADS[t.workload]
-    configs = {c.key: c for c in candidate_configs(t.model, results)}
+    configs = {c.key: c for c in candidate_configs(t.model, results) if c.engine == t.engine}
     c = configs[(t.gpu, t.quant, t.tp)]
     rec = evaluate(c, w, cal(t.gpu), cal.overhead_s)
     if not rec.feasible:

@@ -301,3 +301,17 @@ def test_margin_makes_recommendation_more_conservative(config):
     careful = rec.evaluate(config, w, ttft_margin=3.0)
     assert careful.ttft_margin == 3.0
     assert not careful.feasible or careful.replicas >= plain.replicas
+
+
+def test_engines_and_footnotes():
+    from capacity_planner.recommend import EXAMPLES, recommend, table
+
+    _, w = EXAMPLES[2]  # offline batch: an SGLang config is among the cheapest
+    recs = recommend(w)
+    engines = {r.engine for r in recs}
+    assert engines == {"vllm", "sglang"}
+    sg = [r for r in recs if r.engine == "sglang"]
+    assert all(not r.load_tested for r in sg)  # no SGLang serve runs yet
+    assert recommend(w, engines={"vllm"}) and all(r.engine == "vllm" for r in recommend(w, engines={"vllm"}))
+    top1 = table(w, recs, top=1)
+    assert "³" not in top1  # the cheapest is a load-tested vLLM config: no SGLang footnote

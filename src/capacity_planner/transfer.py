@@ -49,10 +49,12 @@ class Target:
     gpu: str
     quant: str
     tp: int = 1
+    engine: str = "vllm"
 
     @property
     def key(self) -> str:
-        return f"{self.model}|{self.gpu}|{self.quant}|tp{self.tp}"
+        base = f"{self.model}|{self.gpu}|{self.quant}|tp{self.tp}"
+        return base if self.engine == "vllm" else f"{base}|{self.engine}"
 
 
 # Unmeasured setups to predict and then run: a dense 8B model with a different shape
@@ -85,6 +87,7 @@ class TransferredConfig:
     overhead_gib: float  # non-KV, non-weight memory per GPU on the source run
     gpu_memory_utilization: float = rf.DEFAULT_GPU_MEMORY_UTILIZATION
     compile_fallback: bool = False  # the source run needed vLLM's eager compile backend
+    engine: str = "vllm"
 
     # Same interface as calibration.MeasuredConfig, for the recommender.
     predicted = True
@@ -131,24 +134,30 @@ class TransferredConfig:
         return [b for b in DECODE_BATCHES if b <= MAX_NUM_SEQS and b * DECODE_SEQ_TOKENS <= self.kv_cache_tokens]
 
 
-def source_memory(run: dict) -> tuple[float, float]:
-    """(memory.total GiB, derived non-KV overhead GiB) of a Qwen-7B vllm run, where the
-    overhead is measured against the roofline weight size."""
-    v = run["result"]["vllm"]
+def source_memory(run: dict) -> tuple[float, float, float]:
+    """(memory.total GiB, memory fraction for weights + KV, derived non-KV overhead GiB) of a
+    Qwen-7B offline run, where the overhead is measured against the roofline weight size.
+
+    vLLM logs its KV cache in GiB; for SGLang it follows from the token count."""
+    v = run["result"][run["suite"]]
     total = float(run["result"]["gpu_info"]["memory.total"]) / 1024
-    util = v["engine"]["gpu_memory_utilization"]
-    kv = v["log_summary"]["available_kv_cache_gib"]
     w = rf.weight_bytes(load_model(DEFAULT_MODEL), rf.QUANTIZATIONS[run["quant"]]) / 2**30
-    return total, total * util - w - kv
+    if run["suite"] == "vllm":
+        frac = v["engine"]["gpu_memory_utilization"]
+        kv = v["log_summary"]["available_kv_cache_gib"]
+    else:
+        frac = v["engine"]["mem_fraction_static"]
+        kv = v["engine"]["kv_cache_size_tokens"] * load_model(DEFAULT_MODEL).kv_bytes_per_token() / 2**30
+    return total, frac, total * frac - w - kv
 
 
 def transfer(target: Target, results: list[dict] | None = None) -> TransferredConfig:
     results = load_results() if results is None else results
-    fit = {(f.gpu, f.quant): f for f in fits(results)}.get((target.gpu, target.quant))
+    fit = {(f.gpu, f.quant): f for f in fits(results, engine=target.engine)}.get((target.gpu, target.quant))
     if fit is None:
-        raise ValueError(f"no Qwen-7B vllm fit for {target.gpu} {target.quant}")
-    run = latest(results, "vllm")[(target.gpu, target.quant)]
-    total, overhead = source_memory(run)
+        raise ValueError(f"no Qwen-7B {target.engine} fit for {target.gpu} {target.quant}")
+    run = latest(results, target.engine)[(target.gpu, target.quant)]
+    total, frac, overhead = source_memory(run)
     return TransferredConfig(
         gpu=GPUS[target.gpu],
         quant=rf.QUANTIZATIONS[target.quant],
@@ -158,7 +167,9 @@ def transfer(target: Target, results: list[dict] | None = None) -> TransferredCo
         fit=fit,
         memory_total_gib=total,
         overhead_gib=overhead,
-        compile_fallback=bool(run["result"]["vllm"].get("compile_fallback")),
+        gpu_memory_utilization=frac,
+        compile_fallback=bool(run["result"][run["suite"]].get("compile_fallback")),
+        engine=target.engine,
     )
 
 
@@ -166,27 +177,30 @@ TRANSFER_TPS = (1, 2)  # GPU counts the recommender considers for unmeasured set
 
 
 def candidate_configs(model: str = DEFAULT_MODEL, results: list[dict] | None = None) -> list:
-    """What the recommender may choose from for `model`: every config vLLM ran for it, plus,
-    for any other model, every Qwen-7B-calibrated (GPU, quant) transferred to it on 1 or 2
-    GPUs (NVLink GPUs only for 2) where the weights fit."""
-    from .calibration import TP_DEGREES, measured_configs
+    """What the recommender may choose from for `model`, for each engine: every config the
+    engine ran for it, plus, for any other model, every Qwen-7B-calibrated (GPU, quant)
+    transferred to it on 1 or 2 GPUs (NVLink GPUs only for 2) where the weights fit."""
+    from .calibration import ENGINES, TP_DEGREES, measured_configs
 
     results = load_results() if results is None else results
     spec = load_model(model)
-    configs: list = measured_configs(results, spec, TP_DEGREES)
-    if model == DEFAULT_MODEL:
-        return configs
-    have = {c.key for c in configs}
-    awq_ok = registry()[model].awq_repo is not None
-    for f in fits(results):
-        for tp in TRANSFER_TPS:
-            if (f.gpu, f.quant, tp) in have or (tp > 1 and GPUS[f.gpu].nvlink_gbs is None):
-                continue
-            if f.quant == "awq-int4" and not awq_ok:
-                continue
-            c = transfer(Target(model, f.gpu, f.quant, tp), results)
-            if c.kv_cache_gib > 0:
-                configs.append(c)
+    configs: list = []
+    for engine in ENGINES:
+        measured = measured_configs(results, spec, TP_DEGREES, engine=engine)
+        configs += measured
+        if model == DEFAULT_MODEL:
+            continue
+        have = {c.key for c in measured}
+        awq_ok = registry()[model].awq_repo is not None
+        for f in fits(results, engine=engine):
+            for tp in TRANSFER_TPS:
+                if (f.gpu, f.quant, tp) in have or (tp > 1 and GPUS[f.gpu].nvlink_gbs is None):
+                    continue
+                if f.quant == "awq-int4" and not awq_ok:
+                    continue
+                c = transfer(Target(model, f.gpu, f.quant, tp, engine), results)
+                if c.kv_cache_gib > 0:
+                    configs.append(c)
     return configs
 
 

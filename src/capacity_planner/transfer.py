@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import statistics
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -240,18 +241,21 @@ def comparison_table(results: list[dict] | None = None, preds: dict | None = Non
     if not preds:
         return "_No frozen predictions yet._"
     rows = [
-        "| Model | GPUs | Quant | KV tokens: predicted / measured | TTFT ms at 1024: predicted / measured "
+        "| Model | GPUs | Quant | KV tokens: predicted / measured | Non-KV overhead GiB: Qwen-7B / measured "
+        "| TTFT ms at 1024: predicted / measured "
         "| TTFT worst error: transfer / roofline | Decode step ms at batch 1: predicted / measured "
         "| Decode worst error: transfer / roofline | Run |",
-        "|---|---|---|---:|---:|---:|---:|---:|---|",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---|",
     ]
+    errs: dict[str, list[float]] = {"ttft": [], "ttft_roof": [], "step": [], "step_roof": []}
+    qwen = {(r["gpu"], r["quant"]): r for r in latest(results, "vllm").values()}
     for p in preds.values():
         r = measured_run(results, p)
         gpus = p["gpu"] if p["tp"] == 1 else f"{p['tp']}× {p['gpu']}"
         head = f"| {p['model']} | {gpus} | {p['quant']} "
         if r is None:
             rows.append(
-                head + f"| {p['kv_cache_tokens']:,} / – | {p['ttft_s']['1024'] * 1e3:.0f} / – | – "
+                head + f"| {p['kv_cache_tokens']:,} / – | – | {p['ttft_s']['1024'] * 1e3:.0f} / – | – "
                 f"| {p['decode_step_s']['1'] * 1e3:.1f} / – | – | not run yet |"
             )
             continue
@@ -259,15 +263,36 @@ def comparison_table(results: list[dict] | None = None, preds: dict | None = Non
         ttft = {str(t["prompt_len"]): t["ttft_s_median"] for t in v["ttft"]}
         step = {str(d["batch"]): d["decode_step_s"] for d in v["decode"] if "decode_step_s" in d}
         kv = v["engine"]["kv_cache_size_tokens"]
+        for name, pk, meas in (("ttft", "ttft_s", ttft), ("step", "decode_step_s", step)):
+            errs[name] += [abs(p[pk][k] / meas[k] - 1) for k in p[pk] if k in meas]
+            errs[name + "_roof"] += [abs(p[pk + "_roofline"][k] / meas[k] - 1) for k in p[pk] if k in meas]
+        src = qwen.get((p["gpu"], p["quant"]))
+        oh = f"{overhead_gib(src):.2f} / {overhead_gib(r):.2f}" if src else "– / –"
         rows.append(
-            head + f"| {p['kv_cache_tokens']:,} / {kv:,} "
+            head + f"| {p['kv_cache_tokens']:,} / {kv:,} | {oh} "
             f"| {p['ttft_s']['1024'] * 1e3:.0f} / {ttft['1024'] * 1e3:.0f} "
             f"| {_pct(_max_err(p['ttft_s'], ttft))} / {_pct(_max_err(p['ttft_s_roofline'], ttft))} "
             f"| {p['decode_step_s']['1'] * 1e3:.1f} / {step['1'] * 1e3:.1f} "
             f"| {_pct(_max_err(p['decode_step_s'], step))} / {_pct(_max_err(p['decode_step_s_roofline'], step))} "
             f"| [{r['id']}]({r['github_run_url']}) |"
         )
-    return "\n".join(rows)
+    out = "\n".join(rows)
+    if errs["ttft"]:
+        med = lambda xs: statistics.median(xs)  # noqa: E731
+        out += (
+            f"\n\nAcross {len(errs['ttft'])} measured TTFT points and {len(errs['step'])} decode-step points, "
+            f"the median |error| is {med(errs['ttft']):.0%} (TTFT) and {med(errs['step']):.0%} (decode) for the "
+            f"transfer, against {med(errs['ttft_roof']):.0%} and {med(errs['step_roof']):.0%} for the roofline alone."
+        )
+    return out
+
+
+def overhead_gib(run: dict) -> float:
+    """Memory budget minus what vLLM logged for weights and KV cache, per GPU."""
+    v = run["result"]["vllm"]
+    total = float(run["result"]["gpu_info"]["memory.total"]) / 1024
+    ls = v["log_summary"]
+    return total * v["engine"]["gpu_memory_utilization"] - ls["model_loading_gib"] - ls["available_kv_cache_gib"]
 
 
 def main(argv: list[str] | None = None) -> int:

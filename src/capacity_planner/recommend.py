@@ -415,6 +415,21 @@ def examples_markdown(top: int = 3) -> str:
     return "\n\n".join(parts)
 
 
+def other_models_markdown(top: int = 3) -> str:
+    """The first example workload for every registry model besides the default."""
+    from .transfer import candidate_configs
+
+    cal = serve_calibration()
+    name, w = EXAMPLES[0]
+    parts = []
+    for model in registry():
+        if model == DEFAULT_MODEL:
+            continue
+        recs = recommend(w, configs=candidate_configs(model), cal=cal, model=model)
+        parts.append(f"**{model}, {name.lower()}:** {describe(w)}.\n\n{table(w, recs, top)}")
+    return "\n\n".join(parts)
+
+
 def describe(w: Workload) -> str:
     return (
         f"{w.prompt_len}-token prompts, {w.output_len}-token outputs, {w.rps:g} requests/s, "

@@ -4,7 +4,7 @@ Open-source GPU serving capacity planner: roofline predictions validated against
 
 Given a model, latency targets (TTFT / TPOT) and traffic, the planner will recommend a GPU, a serving config (engine, quantization, batch size, KV-cache size) and a cost per million tokens. A roofline model built from GPU specs predicts performance; benchmarks on Modal validate and calibrate it.
 
-**Status: step 3 of the plan** — GPU spec table and roofline formulas (step 1), benchmarks on Modal that measure how far real hardware and vLLM fall short of the roofline (step 2), and a calibrated recommender validated under real load (step 3). Roofline numbers are *ideal bounds*; measured numbers are labelled and link to the GitHub Actions run that produced them.
+**Status: step 4 of the plan** — GPU spec table and roofline formulas (step 1), benchmarks on Modal that measure how far real hardware and vLLM fall short of the roofline (step 2), a calibrated recommender validated under real load (step 3), and predictions for models and multi-GPU setups we never benchmarked, checked against runs afterwards (step 4). Roofline numbers are *ideal bounds*; measured numbers are labelled and link to the GitHub Actions run that produced them.
 
 ## Rule for numbers in this README
 
@@ -452,18 +452,70 @@ the goalposts.
 "Transfer" is the method above. "Roofline" is the efficiency-corrected roofline alone.
 
 <!-- BEGIN GENERATED: transfer_check -->
-| Model | GPUs | Quant | KV tokens: predicted / measured | TTFT ms at 1024: predicted / measured | TTFT worst error: transfer / roofline | Decode step ms at batch 1: predicted / measured | Decode worst error: transfer / roofline | Run |
-|---|---|---|---:|---:|---:|---:|---:|---|
-| Granite-3.1-8B-Instruct | L4 | bf16 | 14,521 / 23,824 | 318 / 350 | -13% / -23% | 61.4 / 65.0 | -8% / -8% | [032-l4-vllm-granite8b-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
-| Granite-3.1-8B-Instruct | L4 | fp8 | 68,685 / 71,760 | 242 / 234 | -11% / -40% | 32.9 / 38.9 | -15% / -19% | [033-l4-vllm-granite8b-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
-| Granite-3.1-8B-Instruct | A100-40GB | bf16 | 119,379 / 128,784 | 81 / 83 | -10% / -49% | 13.2 / 14.2 | -7% / -22% | [034-a100-40gb-vllm-granite8b-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
-| Granite-3.1-8B-Instruct | H100 | bf16 | 355,505 / 360,704 | 29 / 29 | -5% / -44% | 6.6 / 7.0 | -6% / -19% | [035-h100-vllm-granite8b-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
-| Granite-3.1-8B-Instruct | H100 | fp8 | 404,229 / 409,168 | 21 / 21 | -5% / -62% | 4.1 / 4.7 | -13% / -37% | [036-h100-vllm-granite8b-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
-| Qwen2.5-32B-Instruct | H100 | fp8 | 153,653 / 147,328 | 76 / 70 | +18% / -48% | 16.6 / 14.5 | +16% / -21% | [037-h100-vllm-qwen32b-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
-| Qwen2.5-32B-Instruct | A100-80GB | awq-int4 | 216,870 / 213,408 | 417 / 368 | +13% / -40% | 16.4 / 14.6 | -26% / -55% | [038-a100-80gb-vllm-qwen32b-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
-| Qwen2.5-32B-Instruct | 2× H100 | bf16 | 319,090 / 319,280 | 58 / 61 | -11% / -37% | 13.2 / 13.7 | -12% / -28% | [039-h100x2-vllm-qwen32b-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
-| Qwen2.5-32B-Instruct | 2× A100-80GB | bf16 | 323,595 / 331,664 | 158 / 157 | -32% / -52% | 21.3 / 23.6 | -19% / -42% | [040-a100-80gbx2-vllm-qwen32b-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
+| Model | GPUs | Quant | KV tokens: predicted / measured | Non-KV overhead GiB: Qwen-7B / measured | TTFT ms at 1024: predicted / measured | TTFT worst error: transfer / roofline | Decode step ms at batch 1: predicted / measured | Decode worst error: transfer / roofline | Run |
+|---|---|---|---:|---:|---:|---:|---:|---:|---|
+| Granite-3.1-8B-Instruct | L4 | bf16 | 14,521 / 23,824 | 3.15 / 1.78 | 318 / 350 | -13% / -23% | 61.4 / 65.0 | -8% / -8% | [032-l4-vllm-granite8b-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
+| Granite-3.1-8B-Instruct | L4 | fp8 | 68,685 / 71,760 | 2.35 / 1.88 | 242 / 234 | -11% / -40% | 32.9 / 38.9 | -15% / -19% | [033-l4-vllm-granite8b-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
+| Granite-3.1-8B-Instruct | A100-40GB | bf16 | 119,379 / 128,784 | 3.26 / 1.88 | 81 / 83 | -10% / -49% | 13.2 / 14.2 | -7% / -22% | [034-a100-40gb-vllm-granite8b-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
+| Granite-3.1-8B-Instruct | H100 | bf16 | 355,505 / 360,704 | 3.71 / 2.97 | 29 / 29 | -5% / -44% | 6.6 / 7.0 | -6% / -19% | [035-h100-vllm-granite8b-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
+| Granite-3.1-8B-Instruct | H100 | fp8 | 404,229 / 409,168 | 3.74 / 2.98 | 21 / 21 | -5% / -62% | 4.1 / 4.7 | -13% / -37% | [036-h100-vllm-granite8b-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
+| Qwen2.5-32B-Instruct | H100 | fp8 | 153,653 / 147,328 | 3.74 / 5.13 | 76 / 70 | +18% / -48% | 16.6 / 14.5 | +16% / -21% | [037-h100-vllm-qwen32b-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
+| Qwen2.5-32B-Instruct | A100-80GB | awq-int4 | 216,870 / 213,408 | 2.55 / 3.36 | 417 / 368 | +13% / -40% | 16.4 / 14.6 | -26% / -55% | [038-a100-80gb-vllm-qwen32b-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
+| Qwen2.5-32B-Instruct | 2× H100 | bf16 | 319,090 / 319,280 | 3.71 / 3.59 | 58 / 61 | -11% / -37% | 13.2 / 13.7 | -12% / -28% | [039-h100x2-vllm-qwen32b-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
+| Qwen2.5-32B-Instruct | 2× A100-80GB | bf16 | 323,595 / 331,664 | 3.48 / 2.40 | 158 / 157 | -32% / -52% | 21.3 / 23.6 | -19% / -42% | [040-a100-80gbx2-vllm-qwen32b-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39343215885) |
+
+Across 45 measured TTFT points and 73 decode-step points, the median |error| is 5% (TTFT) and 9% (decode) for the transfer, against 31% and 19% for the roofline alone.
 <!-- END GENERATED: transfer_check -->
+
+What the nine runs (032–040) show:
+
+- **The transfer works.** At every setup it predicts TTFT better than the
+  efficiency-corrected roofline alone, and decode at least as well. Most of the roofline's
+  miss is vLLM behaviour (scheduling, sampling, kernel choice) that depends on the GPU and
+  quant much more than on the model, so a fit learned on one model carries over.
+- **Weights are easy and KV capacity mostly is.** vLLM loaded within 0.2 GiB of the
+  roofline weight size everywhere. The exception is Granite on the L4 in BF16: its non-KV
+  overhead was far below Qwen-7B's on the same GPU. Granite's 49k vocabulary, against
+  Qwen's 152k, is the likely reason, though two models can't prove it. On a GPU where
+  weights fill most of the memory, that difference is a large share of the KV cache, and
+  the prediction is conservative there.
+- **Tensor parallelism holds up.** On two GPUs, KV capacity and the decode step at
+  moderate batches land close. The roofline misses a fixed per-all-reduce latency, which
+  shows on short prompts: 2× A100 at 128 tokens is the largest TTFT miss.
+- **Quantized kernels are the least certain.** For AWQ on the 32B model, the decode step
+  was predicted 11–13% too long at small batches and 26% too short at batch 64. The Qwen-7B AWQ fit already
+  had the largest decode errors, and the kernels' compute-bound crossover moves with the
+  matrix shapes.
+
+Once a model has been run, the recommender uses the measured curves. Every other
+(GPU, quant, 1 or 2 GPUs) is transferred from Qwen-7B and marked as predicted:
+`python -m capacity_planner.recommend --model Qwen2.5-32B-Instruct --prompt 1024 --output 256 --rps 5 --ttft-ms 500 --tpot-ms 50`
+
+<!-- BEGIN GENERATED: recommend_other_models -->
+**Granite-3.1-8B-Instruct, chat assistant:** 1024-token prompts, 256-token outputs, 5 requests/s, TTFT ≤ 500 ms, TPOT ≤ 50 ms.
+
+| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| A100-40GB | bf16 | 1 | 2.10 | 0.091 | 0.455 | 51 (73) | 337 (×1.00) | 39.3 | 128,784 | 034-a100-40gb-vllm-granite8b-bf16 |
+| A100-80GB | bf16 | 1 | 2.50 | 0.108 | 0.542 | 36 (82) | 309 (×1.07) | 27.7 | 359,109 | predicted ² from 013-a100-80gb-vllm-bf16 |
+| H100 | bf16 | 1 | 3.95 | 0.171 | 0.857 | 13 (221) | 88 (×1.00) | 9.5 | 360,704 | 035-h100-vllm-granite8b-bf16 |
+
+Not feasible: L4 bf16 (misses SLO: TPOT 66.7 ms at batch 1).
+
+² never run for this model: curves transferred from the named Qwen2.5-7B run (see "Predicting models we never benchmarked").
+
+**Qwen2.5-32B-Instruct, chat assistant:** 1024-token prompts, 256-token outputs, 5 requests/s, TTFT ≤ 500 ms, TPOT ≤ 50 ms.
+
+| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| H100 | fp8 | 1 | 3.95 | 0.171 | 0.857 | 42 (86) | 260 (×1.00) | 32.1 | 147,328 | 037-h100-vllm-qwen32b-fp8 |
+| 2× H100 | bf16 | 1 | 7.90 | 0.343 | 1.714 | 30 (114) | 202 (×1.00) | 22.9 | 319,280 | 039-h100x2-vllm-qwen32b-bf16 |
+| 2× H100 | fp8 | 1 | 7.90 | 0.343 | 1.714 | 17 (165) | 129 (×1.00) | 12.6 | 438,235 | predicted ² from 017-h100-vllm-fp8 |
+
+Not feasible: A10G awq-int4 (misses SLO: TTFT 1089 ms at batch 1); L4 awq-int4 (misses SLO: TTFT 1442 ms at batch 1, TPOT 64.4 ms at batch 1).
+
+² never run for this model: curves transferred from the named Qwen2.5-7B run (see "Predicting models we never benchmarked").
+<!-- END GENERATED: recommend_other_models -->
 
 ## Development
 
@@ -479,4 +531,4 @@ python -m capacity_planner.report --update-readme  # regenerate README tables
 1. **GPU specs + roofline formulas** (done).
 2. **Benchmarks on Modal via GitHub Actions** (vLLM first, then SGLang; Qwen2.5-7B-Instruct; budget < $40) to measure memory overhead and achieved FLOPs/bandwidth (done; see the tables above).
 3. **Calibrate the roofline and build the recommender**: model + SLOs + traffic → GPU, engine, quantization, batch size, KV-cache size, $/1M tokens; validated with `vllm serve` under load (done).
-4. **Predict unmeasured models and multi-GPU setups**, then check the predictions against new runs (in progress).
+4. **Predict unmeasured models and multi-GPU setups**, then check the predictions against new runs (done).

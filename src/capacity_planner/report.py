@@ -100,6 +100,7 @@ SECTIONS = {
     "ttft_margins": lambda: validation.margin_table(validation.load_results()),
     "serve_holdout": lambda: validation.holdout_table(validation.load_results()),
     "transfer_check": lambda: transfer.comparison_table(),
+    "recommend_other_models": lambda: recommend.other_models_markdown(),
 }
 
 

@@ -298,6 +298,72 @@
       "quant": "bf16",
       "model": "Qwen2.5-32B-Instruct",
       "tp": 2
+    },
+    {
+      "id": "041-a100-40gb-serve-granite8b-bf16-chat",
+      "gpu": "A100-40GB",
+      "suite": "serve",
+      "quant": "bf16",
+      "model": "Granite-3.1-8B-Instruct",
+      "serve": {
+        "prompt": 1024,
+        "output": 256,
+        "rps": 5.0,
+        "max_num_seqs": 73
+      }
+    },
+    {
+      "id": "042-a100-80gb-serve-granite8b-bf16-chat",
+      "gpu": "A100-80GB",
+      "suite": "serve",
+      "quant": "bf16",
+      "model": "Granite-3.1-8B-Instruct",
+      "serve": {
+        "prompt": 1024,
+        "output": 256,
+        "rps": 5.0,
+        "max_num_seqs": 82
+      }
+    },
+    {
+      "id": "043-h100-serve-granite8b-fp8-longctx",
+      "gpu": "H100",
+      "suite": "serve",
+      "quant": "fp8",
+      "model": "Granite-3.1-8B-Instruct",
+      "serve": {
+        "prompt": 2048,
+        "output": 256,
+        "rps": 10.0,
+        "max_num_seqs": 80
+      }
+    },
+    {
+      "id": "044-h100-serve-qwen32b-fp8-chat",
+      "gpu": "H100",
+      "suite": "serve",
+      "quant": "fp8",
+      "model": "Qwen2.5-32B-Instruct",
+      "serve": {
+        "prompt": 1024,
+        "output": 256,
+        "rps": 5.0,
+        "max_num_seqs": 86
+      }
+    },
+    {
+      "id": "045-h100x2-serve-qwen32b-fp8-longctx",
+      "gpu": "H100",
+      "suite": "serve",
+      "quant": "fp8",
+      "model": "Qwen2.5-32B-Instruct",
+      "serve": {
+        "prompt": 2048,
+        "output": 256,
+        "rps": 4.0,
+        "max_num_seqs": 44
+      },
+      "tp": 2
     }
   ]
 }

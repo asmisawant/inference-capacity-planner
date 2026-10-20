@@ -1,0 +1,369 @@
+{
+  "cost_usd_upper_bound": 0.4794752893289998,
+  "finished_at": "2026-10-20T09:17:02+00:00",
+  "git_sha": "171e6fabbba0650dc8ef37c7bbb61ee748167875",
+  "github_run_url": "https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417",
+  "gpu": "H100",
+  "gpu_call_s": 385.091121925,
+  "id": "060-h100-sglang-awq-int4",
+  "modal_gpu": "H100!",
+  "model": "Qwen2.5-7B-Instruct",
+  "model_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+  "price_per_hour": 3.9492,
+  "quant": "awq-int4",
+  "reached_modal": true,
+  "result": {
+    "gpu_info": {
+      "clocks.max.memory": "2619",
+      "clocks.max.sm": "1980",
+      "driver_version": "610.57.04",
+      "memory.total": "81559",
+      "name": "NVIDIA H100 80GB HBM3",
+      "power.limit": "700.00"
+    },
+    "sglang": {
+      "decode": [
+        {
+          "batch": 1,
+          "decode_context_len": 640,
+          "decode_step_s": 0.0026703429375003473,
+          "decode_tokens_per_s": 374.48373613618304,
+          "e2e_per_output_token_s_median": 0.0034425667447918564,
+          "engine_span_s": 0.6609728150000365,
+          "engine_span_short_s": 0.319168918999992,
+          "output_len": 192,
+          "output_len_short": 64,
+          "output_tokens_per_s": 290.4809330168736,
+          "prompt_len": 512,
+          "wall_s": 0.6614864880000368
+        },
+        {
+          "batch": 2,
+          "decode_context_len": 640,
+          "decode_step_s": 0.003458074523437382,
+          "decode_tokens_per_s": 578.356535246663,
+          "e2e_per_output_token_s_median": 0.00367919152864582,
+          "engine_span_s": 0.7064106560000027,
+          "engine_span_short_s": 0.2637771170000178,
+          "output_len": 192,
+          "output_len_short": 64,
+          "output_tokens_per_s": 543.593158934452,
+          "prompt_len": 512,
+          "wall_s": 0.7069340589999911
+        },
+        {
+          "batch": 4,
+          "decode_context_len": 640,
+          "decode_step_s": 0.0034641366406251706,
+          "decode_tokens_per_s": 1154.6888633348258,
+          "e2e_per_output_token_s_median": 0.003924369502604108,
+          "engine_span_s": 0.7534944120000091,
+          "engine_span_short_s": 0.3100849219999873,
+          "output_len": 192,
+          "output_len_short": 64,
+          "output_tokens_per_s": 1019.2510890180174,
+          "prompt_len": 512,
+          "wall_s": 0.7541065429999776
+        },
+        {
+          "batch": 8,
+          "decode_context_len": 640,
+          "decode_step_s": 0.003582348375000155,
+          "decode_tokens_per_s": 2233.1719761899635,
+          "e2e_per_output_token_s_median": 0.0044748387161458085,
+          "engine_span_s": 0.8591880490000108,
+          "engine_span_short_s": 0.40064745699999094,
+          "output_len": 192,
+          "output_len_short": 64,
+          "output_tokens_per_s": 1787.7343636095907,
+          "prompt_len": 512,
+          "wall_s": 0.8599090140000385
+        },
+        {
+          "batch": 16,
+          "decode_context_len": 640,
+          "decode_step_s": 0.0038357963671873385,
+          "decode_tokens_per_s": 4171.232898823632,
+          "e2e_per_output_token_s_median": 0.005637144437500001,
+          "engine_span_s": 1.0823606249999784,
+          "engine_span_short_s": 0.5913786899999991,
+          "output_len": 192,
+          "output_len_short": 64,
+          "output_tokens_per_s": 2838.2407203699427,
+          "prompt_len": 512,
+          "wall_s": 1.0833279830000038
+        },
+        {
+          "batch": 32,
+          "decode_context_len": 640,
+          "decode_step_s": 0.005018560421874874,
+          "decode_tokens_per_s": 6376.330523095543,
+          "e2e_per_output_token_s_median": 0.008626815796874965,
+          "engine_span_s": 1.656507554999962,
+          "engine_span_short_s": 1.0141318209999781,
+          "output_len": 192,
+          "output_len_short": 64,
+          "output_tokens_per_s": 3709.0081367000716,
+          "prompt_len": 512,
+          "wall_s": 1.6579376440000146
+        },
+        {
+          "batch": 64,
+          "decode_context_len": 640,
+          "decode_step_s": 0.007121310828125171,
+          "decode_tokens_per_s": 8987.109472491498,
+          "e2e_per_output_token_s_median": 0.014569954958333279,
+          "engine_span_s": 2.7975902320000046,
+          "engine_span_short_s": 1.8860624459999826,
+          "output_len": 192,
+          "output_len_short": 64,
+          "output_tokens_per_s": 4392.3516244247385,
+          "prompt_len": 512,
+          "wall_s": 2.799888612000018
+        },
+        {
+          "batch": 128,
+          "decode_context_len": 640,
+          "decode_step_s": 0.009525268492187156,
+          "decode_tokens_per_s": 13437.941419182938,
+          "e2e_per_output_token_s_median": 0.024598923247395838,
+          "engine_span_s": 4.723731465999947,
+          "engine_span_short_s": 3.504497098999991,
+          "output_len": 192,
+          "output_len_short": 64,
+          "output_tokens_per_s": 5202.666615765723,
+          "prompt_len": 512,
+          "wall_s": 4.7278871839999965
+        },
+        {
+          "batch": 256,
+          "decode_context_len": 640,
+          "decode_step_s": 0.01608034550000026,
+          "decode_tokens_per_s": 15920.055946558852,
+          "e2e_per_output_token_s_median": 0.04629748855208341,
+          "engine_span_s": 8.890188306000027,
+          "engine_span_short_s": 6.831904081999994,
+          "output_len": 192,
+          "output_len_short": 64,
+          "output_tokens_per_s": 5528.7917767531535,
+          "prompt_len": 512,
+          "wall_s": 8.898502140000005
+        }
+      ],
+      "engine": {
+        "enable_prefix_caching": false,
+        "kv_cache_size_tokens": 1118863,
+        "max_model_len": 4096,
+        "max_num_seqs": 256,
+        "max_req_input_len": 4090,
+        "mem_fraction_static": 0.83
+      },
+      "init_s": 308.704511684,
+      "meta_info_keys": [
+        "cached_tokens",
+        "cached_tokens_details",
+        "completion_tokens",
+        "dp_rank",
+        "e2e_latency",
+        "finish_reason",
+        "id",
+        "num_retractions",
+        "prompt_tokens",
+        "reasoning_tokens",
+        "response_sent_to_client_ts",
+        "weight_version",
+        "weight_versions"
+      ],
+      "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+      "quantization": null,
+      "revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+      "server_args": {
+        "attention_backend": "fa3",
+        "chunked_prefill_size": 8192,
+        "context_length": 4096,
+        "cuda_graph_max_bs": null,
+        "disable_radix_cache": true,
+        "dtype": "auto",
+        "kv_cache_dtype": "auto",
+        "max_prefill_tokens": 16384,
+        "max_running_requests": 256,
+        "mem_fraction_static": 0.83,
+        "quantization": null,
+        "sampling_backend": "flashinfer",
+        "schedule_policy": "fcfs",
+        "tp_size": 1
+      },
+      "sglang_version": "0.5.21",
+      "tensor_parallel_size": 1,
+      "ttft": [
+        {
+          "prompt_len": 128,
+          "trials": [
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.09601111099999571,
+              "wall_s": 0.09658104400000411
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.011625659000003452,
+              "wall_s": 0.012126847000047292
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.012504875999979959,
+              "wall_s": 0.012866397000038887
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.012528976999988117,
+              "wall_s": 0.012884257999985493
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.012553890999981832,
+              "wall_s": 0.012915106000036758
+            }
+          ],
+          "ttft_s_median": 0.012528976999988117,
+          "wall_s_median": 0.012884257999985493
+        },
+        {
+          "prompt_len": 512,
+          "trials": [
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.026131269000018165,
+              "wall_s": 0.02647079000001895
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.026095864000012625,
+              "wall_s": 0.02642382100003715
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.026160683000000517,
+              "wall_s": 0.026485076999961166
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.02626589999999851,
+              "wall_s": 0.02660281099997519
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.02619498899997552,
+              "wall_s": 0.02653342599995767
+            }
+          ],
+          "ttft_s_median": 0.026160683000000517,
+          "wall_s_median": 0.026485076999961166
+        },
+        {
+          "prompt_len": 1024,
+          "trials": [
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.0466638379999722,
+              "wall_s": 0.04701438399996505
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.047669044000031136,
+              "wall_s": 0.04800755299999082
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.04836857399999417,
+              "wall_s": 0.04869910399997934
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.04744748600001003,
+              "wall_s": 0.047786674000008134
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.04781505900001548,
+              "wall_s": 0.0481512700000053
+            }
+          ],
+          "ttft_s_median": 0.047669044000031136,
+          "wall_s_median": 0.04800755299999082
+        },
+        {
+          "prompt_len": 2048,
+          "trials": [
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.09275675900005353,
+              "wall_s": 0.09319149800001014
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.09060968600005026,
+              "wall_s": 0.0911461210000084
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.09399167899999838,
+              "wall_s": 0.09450838099996872
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.09114468499996065,
+              "wall_s": 0.09167500299997755
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.10199791499996991,
+              "wall_s": 0.10257912899999155
+            }
+          ],
+          "ttft_s_median": 0.09275675900005353,
+          "wall_s_median": 0.09319149800001014
+        },
+        {
+          "prompt_len": 4000,
+          "trials": [
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.20217186299998957,
+              "wall_s": 0.20272807600002807
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.18780309499999248,
+              "wall_s": 0.18838724199997614
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.18358122000000776,
+              "wall_s": 0.18414588800004594
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.18488256500000944,
+              "wall_s": 0.18547004900000275
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.1884968099999469,
+              "wall_s": 0.1891076249999628
+            }
+          ],
+          "ttft_s_median": 0.18780309499999248,
+          "wall_s_median": 0.18838724199997614
+        }
+      ]
+    }
+  },
+  "serve": null,
+  "start_attempts": 1,
+  "started_at": "2026-10-20T09:10:24+00:00",
+  "status": "ok",
+  "suite": "sglang",
+  "tp": 1,
+  "wall_s": 397.344235791
+}

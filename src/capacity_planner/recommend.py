@@ -35,7 +35,8 @@ from .roofline import DEFAULT_GPU_MEMORY_UTILIZATION
 from .models import DEFAULT_MODEL, registry
 from .validation import same_setup
 
-ENGINE = "vLLM 0.30.0"
+ENGINE_LABELS = {"vllm": "vLLM 0.30.0", "sglang": "SGLang 0.5.21"}
+SERVE_SUITES = {"serve": "vllm", "sglang-serve": "sglang"}  # load-test suite -> engine
 
 
 @dataclass(frozen=True)
@@ -134,6 +135,8 @@ class Recommendation:
     compile_fallback: bool = False
     gpus_per_replica: int = 1  # tensor-parallel degree
     predicted: bool = False  # curves transferred from Qwen-7B, never measured for this model
+    engine: str = "vllm"
+    load_tested: bool = True  # False: the engine has no serve runs; overhead/margins borrowed from vLLM
     ttft_margin: float = 1.0  # p90 TTFT safety factor from serve runs (see serve_calibration)
 
     @property
@@ -186,6 +189,7 @@ def evaluate(c: MeasuredConfig, w: Workload, ttft_margin: float = 1.0, overhead_
         compile_fallback=c.compile_fallback,
         gpus_per_replica=c.tp,
         predicted=c.predicted,
+        engine=c.engine,
     )
     seq_len = w.prompt_len + w.output_len
     if seq_len > c.max_model_len:
@@ -296,11 +300,13 @@ NO_CALIBRATION = ServeCalibration(0.0, {}, ())
 
 
 def serve_runs(results: list[dict], configs: list[MeasuredConfig]) -> list[tuple[dict, MeasuredConfig, Workload]]:
-    by_key = {(c.model.name, *c.key): c for c in configs}
+    by_key = {(c.model.name, c.engine, *c.key): c for c in configs}
     out = []
     for r in results:
-        c = by_key.get((r.get("model", DEFAULT_MODEL), r["gpu"], r["quant"], r.get("tp", 1)))
-        if r["suite"] == "serve" and c is not None:
+        if r["suite"] not in SERVE_SUITES:
+            continue
+        c = by_key.get((r.get("model", DEFAULT_MODEL), SERVE_SUITES[r["suite"]], r["gpu"], r["quant"], r.get("tp", 1)))
+        if c is not None:
             s = r["serve"]
             w = Workload(s["prompt"], s["output"], s["rps"], ttft_slo_s=1e9, tpot_slo_s=1e9)
             out.append((r, c, w))
@@ -311,8 +317,9 @@ def serve_calibration(
     results: list[dict] | None = None,
     configs: list[MeasuredConfig] | None = None,
     exclude: frozenset[str] = frozenset(),
+    engine: str = "vllm",
 ) -> ServeCalibration:
-    """Fit overhead and margins on serve runs, leaving out run ids in `exclude`.
+    """Fit overhead and margins on `engine`'s serve runs, leaving out run ids in `exclude`.
 
     By default every serve run counts, for any model: a run is predicted from the configs
     the recommender would use for its model (measured, or transferred from Qwen-7B)."""
@@ -327,6 +334,10 @@ def serve_calibration(
         configs = [c for m in registry() for c in candidate_configs(m, results)]
     preds = []
     for r, c, w in serve_runs(results, configs):
+        # A run with more slots than the curves are trusted for (SGLang past its CUDA-graph
+        # limit) can't be predicted; it says nothing about overhead or margins.
+        if c.engine != engine or r["serve"]["max_num_seqs"] > c.max_measured_batch:
+            continue
         q = predict(c, w, r["serve"]["max_num_seqs"])
         if q is not None and r["id"] not in exclude:
             preds.append((r, q))
@@ -341,64 +352,102 @@ def serve_calibration(
     return ServeCalibration(overhead, by_gpu, ratios)
 
 
+def engine_calibrations(results: list[dict] | None = None) -> dict[str, tuple[ServeCalibration, bool]]:
+    """engine -> (calibration, has its own serve runs).
+
+    An engine without serve runs uses vLLM's calibration. One with serve runs uses its own
+    serving overhead and its own p90 margin on the GPUs it was load-tested on; on other GPUs
+    it takes vLLM's margin for that GPU (part of the tail is the hardware), never less than
+    its own largest margin."""
+    from .calibration import ENGINES
+
+    cals = {e: serve_calibration(results, engine=e) for e in ENGINES}
+    base = cals["vllm"]
+    out = {}
+    for e, c in cals.items():
+        if e == "vllm" or not c.ratios:
+            out[e] = (c if e == "vllm" else base, e == "vllm")
+            continue
+        own = c.default
+        by_gpu = {g: max(m, own) for g, m in base.by_gpu.items()} | c.by_gpu
+        out[e] = (ServeCalibration(c.overhead_s, by_gpu, c.ratios), True)
+    return out
+
+
 def recommend(
     w: Workload,
     quants: set[str] | None = None,
     configs: list[MeasuredConfig] | None = None,
-    cal: ServeCalibration | None = None,
+    cal: ServeCalibration | dict[str, ServeCalibration] | None = None,
     model: str = DEFAULT_MODEL,
+    engines: set[str] | None = None,
 ) -> list[Recommendation]:
     """All candidate configs for `model`, feasible ones first, cheapest first.
 
-    Serving overhead and p90 margins always come from the Qwen-7B serve runs."""
+    Serving overhead and p90 margins come from each engine's serve runs (all models). An
+    engine without serve runs borrows vLLM's, and its rows are marked not load-tested."""
+    from dataclasses import replace
+
     from .transfer import candidate_configs
 
     configs = candidate_configs(model) if configs is None else configs
-    cal = serve_calibration() if cal is None else cal
-    recs = [
-        evaluate(c, w, cal(c.gpu.name), cal.overhead_s) for c in configs if quants is None or c.quant.name in quants
-    ]
+    cals = engine_calibrations() if cal is None else cal
+    recs = []
+    for c in configs:
+        if (quants is not None and c.quant.name not in quants) or (engines is not None and c.engine not in engines):
+            continue
+        ecal, tested = (cals, True) if isinstance(cals, ServeCalibration) else cals[c.engine]
+        recs.append(replace(evaluate(c, w, ecal(c.gpu.name), ecal.overhead_s), load_tested=tested))
 
     def key(r: Recommendation):
         tpot = r.operating.tpot_s if r.operating else 0.0
-        return (not r.feasible, round(r.cost_per_hour, 6), r.predicted, QUANT_PREFERENCE[r.quant], tpot, r.gpu)
+        return (
+            not r.feasible, round(r.cost_per_hour, 6), r.predicted, not r.load_tested,
+            QUANT_PREFERENCE[r.quant], tpot, r.gpu, r.engine,
+        )
 
     return sorted(recs, key=key)
 
 
 def table(w: Workload, recs: list[Recommendation], top: int | None = None) -> str:
     rows = [
-        "| GPU | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+        "| GPU | Engine | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     feasible = [r for r in recs if r.feasible]
-    for r in feasible[:top] if top else feasible:
+    shown = feasible[:top] if top else feasible
+    for r in shown:
         o = r.operating
         note = " ¹" if r.compile_fallback else ""
         gpu = r.gpu if r.gpus_per_replica == 1 else f"{r.gpus_per_replica}× {r.gpu}"
         run = f"predicted ² from {r.run_id}" if r.predicted else r.run_id
         rows.append(
-            f"| {gpu} | {r.quant}{note} | {r.replicas} | {r.cost_per_hour:.2f} "
+            f"| {gpu} | {ENGINE_LABELS[r.engine].split()[0]}{'' if r.load_tested else ' ³'} | {r.quant}{note} | {r.replicas} | {r.cost_per_hour:.2f} "
             f"| {r.cost_per_million_tokens(w):.3f} | {r.cost_per_million_tokens(w, output_only=True):.3f} "
             f"| {o.batch} ({r.max_num_seqs}) | {r.queue.ttft_p90_s * r.ttft_margin * 1e3:.0f} (×{r.ttft_margin:.2f}) "
             f"| {o.tpot_s * 1e3:.1f} "
             f"| {r.kv_cache_tokens:,} | {run} |"
         )
     if not feasible:
-        rows.append("| _none_ | | | | | | | | | | |")
+        rows.append("| _none_ | | | | | | | | | | | |")
     infeasible = [r for r in recs if not r.feasible]
     out = "\n".join(rows)
     if infeasible:
         out += "\n\nNot feasible: " + "; ".join(
-            f"{r.gpus_per_replica}× {r.gpu} {r.quant} ({r.reason})" if r.gpus_per_replica > 1 else f"{r.gpu} {r.quant} ({r.reason})"
+            f"{'' if r.gpus_per_replica == 1 else f'{r.gpus_per_replica}× '}{r.gpu} {ENGINE_LABELS[r.engine].split()[0]} {r.quant} ({r.reason})"
             for r in infeasible
         ) + "."
-    if any(r.compile_fallback for r in feasible):
+    if any(r.compile_fallback for r in shown):
         out += "\n\n¹ benchmarked with vLLM's eager compile backend after an Inductor error."
-    if any(r.predicted for r in feasible):
+    if any(r.predicted for r in shown):
         out += (
             "\n\n² never run for this model: curves transferred from the named Qwen2.5-7B run "
             "(see \"Predicting models we never benchmarked\")."
+        )
+    if any(not r.load_tested for r in shown):
+        out += (
+            "\n\n³ no load test on this engine yet: serving overhead and p90 margins are borrowed "
+            "from vLLM's serve runs."
         )
     return out
 
@@ -412,8 +461,10 @@ EXAMPLES = (
 
 
 def examples_markdown(top: int = 3) -> str:
-    configs = measured_configs()
-    cal = serve_calibration()
+    from .transfer import candidate_configs
+
+    configs = candidate_configs()
+    cal = engine_calibrations()
     parts = []
     for name, w in EXAMPLES:
         recs = recommend(w, configs=configs, cal=cal)
@@ -425,7 +476,7 @@ def other_models_markdown(top: int = 3) -> str:
     """The first example workload for every registry model besides the default."""
     from .transfer import candidate_configs
 
-    cal = serve_calibration()
+    cal = engine_calibrations()
     name, w = EXAMPLES[0]
     parts = []
     for model in registry():
@@ -443,6 +494,16 @@ def describe(w: Workload) -> str:
     )
 
 
+def engine_args(r: Recommendation) -> str:
+    """The recommendation as the engine's own launch settings."""
+    if r.engine == "sglang":  # memory fraction: SGLang's default, as benchmarked
+        return f"tp_size={r.gpus_per_replica}, max_running_requests={r.max_num_seqs}, disable_radix_cache"
+    return (
+        f"tensor_parallel_size={r.gpus_per_replica}, max_num_seqs={r.max_num_seqs}, "
+        f"gpu_memory_utilization={DEFAULT_GPU_MEMORY_UTILIZATION}"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Recommend a GPU + serving config for a model in the registry.")
     ap.add_argument("--model", default=DEFAULT_MODEL, choices=sorted(registry()))
@@ -452,10 +513,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--ttft-ms", type=float, required=True, help="time-to-first-token target")
     ap.add_argument("--tpot-ms", type=float, required=True, help="time-per-output-token target")
     ap.add_argument("--quant", action="append", choices=["bf16", "fp8", "awq-int4"], help="allow only these")
+    ap.add_argument("--engine", action="append", choices=sorted(ENGINE_LABELS), help="allow only these")
     ap.add_argument("--top", type=int, default=5)
     a = ap.parse_args(argv)
     w = Workload(a.prompt, a.output, a.rps, a.ttft_ms / 1e3, a.tpot_ms / 1e3)
-    recs = recommend(w, set(a.quant) if a.quant else None, model=a.model)
+    recs = recommend(w, set(a.quant) if a.quant else None, model=a.model, engines=set(a.engine) if a.engine else None)
     print(f"{a.model}: {describe(w)}\n")
     print(table(w, recs, a.top))
     best = next((r for r in recs if r.feasible), None)
@@ -463,8 +525,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"\nRecommended{' (predicted, not yet benchmarked for this model)' if best.predicted else ''}: "
             f"{best.replicas} x {best.gpu if best.gpus_per_replica == 1 else f'{best.gpus_per_replica}x {best.gpu}'}, "
-            f"{ENGINE}, quant={best.quant}, tensor_parallel_size={best.gpus_per_replica}, "
-            f"max_num_seqs={best.max_num_seqs}, gpu_memory_utilization={DEFAULT_GPU_MEMORY_UTILIZATION}, "
+            f"{ENGINE_LABELS[best.engine]}, quant={best.quant}, {engine_args(best)}, "
             f"KV cache {best.kv_cache_tokens:,} tokens/replica, ${best.cost_per_hour:.2f}/hr, "
             f"${best.cost_per_million_tokens(w):.3f}/1M tokens"
         )

@@ -1,4 +1,8 @@
-"""Online serving benchmark: a real `vllm serve` under Poisson load from `vllm bench serve`.
+"""Online serving benchmark: a real server under Poisson load from the engine's own load tool.
+
+vLLM: `vllm serve` + `vllm bench serve`. SGLang (--engine sglang, on SGLang's image):
+`python -m sglang.launch_server` + `python -m sglang.bench_serving`, which writes the same
+metric names (median/p90 TTFT, median TPOT, request throughput).
 
 Runs inside the Modal container (python -m bench.serve_bench). Validates the
 recommender: one replica, the recommended max_num_seqs, the per-replica request
@@ -31,7 +35,7 @@ def wait_healthy(proc: subprocess.Popen, timeout_s: float = 1200) -> None:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         if proc.poll() is not None:
-            raise RuntimeError(f"vllm serve exited with {proc.returncode} before becoming healthy")
+            raise RuntimeError(f"server exited with {proc.returncode} before becoming healthy")
         try:
             with urllib.request.urlopen(f"http://127.0.0.1:{PORT}/health", timeout=5) as r:
                 if r.status == 200:
@@ -39,7 +43,7 @@ def wait_healthy(proc: subprocess.Popen, timeout_s: float = 1200) -> None:
         except OSError:
             pass
         time.sleep(5)
-    raise TimeoutError("vllm serve did not become healthy")
+    raise TimeoutError("server did not become healthy")
 
 
 def bench(model: str, prompt: int, output: int, num_prompts: int, rps: float, out_dir: str, name: str) -> dict:
@@ -58,8 +62,27 @@ def bench(model: str, prompt: int, output: int, num_prompts: int, rps: float, ou
     return {k: v for k, v in res.items() if k not in DROP_KEYS}
 
 
+def bench_sglang(model: str, prompt: int, output: int, num_prompts: int, rps: float, out_dir: str, name: str) -> dict:
+    """SGLang's load tool. random-ids = random token ids, like vLLM's random dataset (SGLang's
+    'random' samples ShareGPT text). Its range ratio is the minimum fraction of the length,
+    so 1.0 gives fixed lengths. EOS is ignored by default."""
+    path = os.path.join(out_dir, name)
+    cmd = [
+        sys.executable, "-m", "sglang.bench_serving",
+        "--backend", "sglang", "--model", model, "--port", str(PORT),
+        "--dataset-name", "random-ids", "--random-input-len", str(prompt), "--random-output-len", str(output),
+        "--random-range-ratio", "1.0", "--num-prompts", str(num_prompts), "--request-rate", str(rps),
+        "--seed", "0", "--disable-tqdm", "--output-file", path,
+    ]
+    subprocess.run(cmd, check=True, env={**os.environ, "HF_HUB_OFFLINE": "1"})
+    with open(path) as fh:
+        res = json.loads(fh.read().strip().splitlines()[-1])
+    return {k: v for k, v in res.items() if k not in DROP_KEYS}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--engine", choices=("vllm", "sglang"), default="vllm")
     ap.add_argument("--quant", choices=QUANTS, required=True)
     ap.add_argument("--model", default="Qwen2.5-7B-Instruct")
     ap.add_argument("--tp", type=int, default=1)
@@ -73,11 +96,20 @@ def main() -> None:
     args = ap.parse_args()
 
     model, quantization = hf_model(args.model, args.quant)
-    serve = [
-        "vllm", "serve", model, "--port", str(PORT), "--max-model-len", str(MAX_MODEL_LEN),
-        "--max-num-seqs", str(args.max_num_seqs), "--gpu-memory-utilization", "0.92",
-        "--no-enable-prefix-caching", "--seed", "0", "--tensor-parallel-size", str(args.tp),
-    ]
+    if args.engine == "vllm":
+        serve = [
+            "vllm", "serve", model, "--port", str(PORT), "--max-model-len", str(MAX_MODEL_LEN),
+            "--max-num-seqs", str(args.max_num_seqs), "--gpu-memory-utilization", "0.92",
+            "--no-enable-prefix-caching", "--seed", "0", "--tensor-parallel-size", str(args.tp),
+        ]
+        load = bench
+    else:  # same request settings as bench/sglang_bench.py; memory fraction is SGLang's default
+        serve = [
+            sys.executable, "-m", "sglang.launch_server", "--model-path", model, "--port", str(PORT),
+            "--context-length", str(MAX_MODEL_LEN), "--max-running-requests", str(args.max_num_seqs),
+            "--disable-radix-cache", "--random-seed", "0", "--tp-size", str(args.tp),
+        ]
+        load = bench_sglang
     if args.revision:
         serve += ["--revision", args.revision]
     if quantization:
@@ -89,10 +121,10 @@ def main() -> None:
         num_prompts = max(100, min(3000, round(args.rps * args.duration_s)))
         with tempfile.TemporaryDirectory() as tmp:
             # Warm-up at the same rate, not recorded: CUDA graphs, allocator, first requests.
-            bench(model, args.prompt, args.output, min(50, num_prompts), args.rps, tmp, "warmup.json")
-            result = bench(model, args.prompt, args.output, num_prompts, args.rps, tmp, "result.json")
+            load(model, args.prompt, args.output, min(50, num_prompts), args.rps, tmp, "warmup.json")
+            result = load(model, args.prompt, args.output, num_prompts, args.rps, tmp, "result.json")
         out = {
-            "server": {"cmd": serve[1:], "max_num_seqs": args.max_num_seqs},
+            "server": {"engine": args.engine, "cmd": serve[1:], "max_num_seqs": args.max_num_seqs},
             "load": {
                 "prompt_len": args.prompt, "output_len": args.output, "request_rate": args.rps,
                 "num_prompts": num_prompts, "arrivals": "poisson",

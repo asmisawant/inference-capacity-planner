@@ -26,11 +26,21 @@ def load_results(results_dir: Path = RESULTS_DIR) -> list[dict]:
     if not results_dir.exists():
         return []
     recs = [json.loads(p.read_text()) for p in sorted(results_dir.glob("*.json"))]
-    recs = [r for r in recs if r.get("status") == "ok"]
+    recs = [r for r in recs if r.get("status") == "ok" and gpu_matches(r)]
     for r in recs:
         r.setdefault("model", DEFAULT_MODEL)
         r.setdefault("tp", 1)
     return sorted(recs, key=lambda r: r["finished_at"])
+
+
+def gpu_matches(r: dict) -> bool:
+    """False if the GPU's reported memory isn't the requested GPU's: Modal can substitute a
+    larger card (run 051 asked for an A100-40GB and got an A100-80GB). Such runs stay in the
+    ledger and spend but are left out of every table and fit."""
+    total = r.get("result", {}).get("gpu_info", {}).get("memory.total")
+    if total is None or r.get("gpu") not in GPUS:
+        return True
+    return 0.85 <= float(total) * 2**20 / GPUS[r["gpu"]].memory_bytes <= 1.15
 
 
 def same_setup(r: dict, model: str = DEFAULT_MODEL, tp: int = 1) -> bool:

@@ -377,6 +377,162 @@
         "rps": 0.952,
         "max_num_seqs": 20
       }
+    },
+    {
+      "id": "047-l4-sglang-bf16",
+      "gpu": "L4",
+      "suite": "sglang",
+      "quant": "bf16"
+    },
+    {
+      "id": "048-l4-sglang-bf16",
+      "gpu": "L4",
+      "suite": "sglang",
+      "quant": "bf16"
+    },
+    {
+      "id": "049-l4-sglang-bf16",
+      "gpu": "L4",
+      "suite": "sglang",
+      "quant": "bf16"
+    },
+    {
+      "id": "050-a10g-sglang-bf16",
+      "gpu": "A10G",
+      "suite": "sglang",
+      "quant": "bf16"
+    },
+    {
+      "id": "051-a100-40gb-sglang-bf16",
+      "gpu": "A100-40GB",
+      "suite": "sglang",
+      "quant": "bf16"
+    },
+    {
+      "id": "052-a100-80gb-sglang-bf16",
+      "gpu": "A100-80GB",
+      "suite": "sglang",
+      "quant": "bf16"
+    },
+    {
+      "id": "053-h100-sglang-bf16",
+      "gpu": "H100",
+      "suite": "sglang",
+      "quant": "bf16"
+    },
+    {
+      "id": "054-l4-sglang-fp8",
+      "gpu": "L4",
+      "suite": "sglang",
+      "quant": "fp8"
+    },
+    {
+      "id": "055-a100-80gb-sglang-fp8",
+      "gpu": "A100-80GB",
+      "suite": "sglang",
+      "quant": "fp8"
+    },
+    {
+      "id": "056-h100-sglang-fp8",
+      "gpu": "H100",
+      "suite": "sglang",
+      "quant": "fp8"
+    },
+    {
+      "id": "057-l4-sglang-awq-int4",
+      "gpu": "L4",
+      "suite": "sglang",
+      "quant": "awq-int4"
+    },
+    {
+      "id": "058-a10g-sglang-awq-int4",
+      "gpu": "A10G",
+      "suite": "sglang",
+      "quant": "awq-int4"
+    },
+    {
+      "id": "059-a100-80gb-sglang-awq-int4",
+      "gpu": "A100-80GB",
+      "suite": "sglang",
+      "quant": "awq-int4"
+    },
+    {
+      "id": "060-h100-sglang-awq-int4",
+      "gpu": "H100",
+      "suite": "sglang",
+      "quant": "awq-int4"
+    },
+    {
+      "id": "061-a100-40gb-sglang-bf16",
+      "gpu": "A100-40GB",
+      "suite": "sglang",
+      "quant": "bf16"
+    },
+    {
+      "id": "062-a100-40gb-sglang-serve-qwen7b-bf16-chat",
+      "gpu": "A100-40GB",
+      "suite": "sglang-serve",
+      "quant": "bf16",
+      "model": "Qwen2.5-7B-Instruct",
+      "serve": {
+        "prompt": 1024,
+        "output": 256,
+        "rps": 5.0,
+        "max_num_seqs": 93
+      }
+    },
+    {
+      "id": "063-h100-sglang-serve-qwen7b-bf16-longctx",
+      "gpu": "H100",
+      "suite": "sglang-serve",
+      "quant": "bf16",
+      "model": "Qwen2.5-7B-Instruct",
+      "serve": {
+        "prompt": 2048,
+        "output": 256,
+        "rps": 10.0,
+        "max_num_seqs": 96
+      }
+    },
+    {
+      "id": "064-h100-sglang-serve-qwen7b-fp8-offline",
+      "gpu": "H100",
+      "suite": "sglang-serve",
+      "quant": "fp8",
+      "model": "Qwen2.5-7B-Instruct",
+      "serve": {
+        "prompt": 512,
+        "output": 512,
+        "rps": 25.0,
+        "max_num_seqs": 256
+      }
+    },
+    {
+      "id": "065-a100-40gb-sglang-serve-granite8b-bf16-chat",
+      "gpu": "A100-40GB",
+      "suite": "sglang-serve",
+      "quant": "bf16",
+      "model": "Granite-3.1-8B-Instruct",
+      "serve": {
+        "prompt": 1024,
+        "output": 256,
+        "rps": 5.0,
+        "max_num_seqs": 70
+      }
+    },
+    {
+      "id": "066-a100-40gb-sglang-granite8b-bf16",
+      "gpu": "A100-40GB",
+      "suite": "sglang",
+      "quant": "bf16",
+      "model": "Granite-3.1-8B-Instruct"
+    },
+    {
+      "id": "067-a100-40gb-sglang-granite8b-bf16",
+      "gpu": "A100-40GB",
+      "suite": "sglang",
+      "quant": "bf16",
+      "model": "Granite-3.1-8B-Instruct"
     }
   ]
 }

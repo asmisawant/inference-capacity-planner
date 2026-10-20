@@ -301,3 +301,24 @@ def test_margin_makes_recommendation_more_conservative(config):
     careful = rec.evaluate(config, w, ttft_margin=3.0)
     assert careful.ttft_margin == 3.0
     assert not careful.feasible or careful.replicas >= plain.replicas
+
+
+def test_engines_and_footnotes():
+    from capacity_planner.recommend import EXAMPLES, engine_calibrations, recommend, table
+    from capacity_planner.validation import load_results
+
+    _, w = EXAMPLES[2]  # offline batch: an SGLang config is among the cheapest
+    results = load_results()
+    # Without SGLang serve runs, SGLang borrows vLLM's calibration and is marked not load-tested.
+    no_sglang_serve = [r for r in results if r["suite"] != "sglang-serve"]
+    cals = engine_calibrations(no_sglang_serve)
+    assert cals["sglang"] == (cals["vllm"][0], False) and cals["vllm"][1]
+    recs = recommend(w, cal=cals)
+    assert {r.engine for r in recs} == {"vllm", "sglang"}
+    assert all(r.load_tested == (r.engine == "vllm") for r in recs)
+    assert all(r.engine == "vllm" for r in recommend(w, cal=cals, engines={"vllm"}))
+    sg = [r for r in recs if r.feasible and r.engine == "sglang"]
+    assert "³" in table(w, sg) and "³" not in table(w, [r for r in recs if r.engine == "vllm"])
+    # With its own serve runs, SGLang has its own calibration.
+    own = engine_calibrations(results)["sglang"]
+    assert own[1] == any(r["suite"] == "sglang-serve" for r in results)

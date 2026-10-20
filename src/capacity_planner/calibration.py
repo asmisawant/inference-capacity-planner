@@ -75,6 +75,25 @@ def _interp(xs: list[float], ys: list[float], x: float) -> float:
     return ys[lo] + t * (ys[hi] - ys[lo])
 
 
+def sglang_graph_max_bs(gpu: GPUSpec, tp: int = 1) -> int:
+    """Largest decode batch SGLang v0.5.21 captures in CUDA graphs by default.
+
+    From sglang/srt/arg_groups/memory_hook.py (GPU-dependent capacity defaults): by GPU
+    memory, < 20 GB: 8; < 35 GB: 48 (160 if tp >= 4); < 60 GB: 32 (160 if tp >= 4);
+    otherwise 256 (512 if tp >= 4). Larger batches decode without graphs: run 067 (Granite,
+    A100-40GB) went from 17.7 ms at batch 32 to 43.5 ms at 64, and serve run 065 missed
+    its targets running about 55 requests at once.
+    """
+    gib = gpu.memory_bytes / 2**30
+    if gib < 20:
+        return 8
+    if gib < 35:
+        return 48 if tp < 4 else 160
+    if gib < 60:
+        return 32 if tp < 4 else 160
+    return 256 if tp < 4 else 512
+
+
 @dataclass
 class MeasuredConfig:
     """One (GPU, quant, tp) that vLLM ran successfully, with its measured curves."""
@@ -87,8 +106,12 @@ class MeasuredConfig:
     tp: int = 1
     predicted = False  # see transfer.TransferredConfig
 
+    @property
+    def engine(self) -> str:
+        return self.run["suite"]
+
     def __post_init__(self):
-        v = self.run["result"]["vllm"]
+        v = self.run["result"][self.run["suite"]]  # "vllm" or "sglang": same schema
         t = sorted(v["ttft"], key=lambda t: t["prompt_len"])
         self._ttft_p = [float(x["prompt_len"]) for x in t]
         self._ttft_s = [x["ttft_s_median"] for x in t]
@@ -113,7 +136,11 @@ class MeasuredConfig:
 
     @property
     def max_measured_batch(self) -> int:
-        return int(self._dec_b[-1])
+        """Largest batch the recommender may use: the largest measured one, and for SGLang
+        no more than its CUDA-graph limit (step time jumps past it; between measured points
+        the interpolation would hide the jump)."""
+        b = int(self._dec_b[-1])
+        return min(b, sglang_graph_max_bs(self.gpu, self.tp)) if self.engine == "sglang" else b
 
     def _roof_ttft(self, p: float) -> float:
         return rf.ttft_s(self.gpu, self.model, self.quant, max(1, round(p)), eff=self.eff, tp=self.tp)
@@ -147,16 +174,23 @@ class MeasuredConfig:
 TP_DEGREES = (1, 2, 4, 8)
 
 
+ENGINES = ("vllm", "sglang")  # offline suite name = engine
+ENGINE_NAMES = {"vllm": "vLLM", "sglang": "SGLang"}
+
+
 def measured_configs(
-    results: list[dict] | None = None, model: ModelSpec | None = None, tps: tuple[int, ...] = (1,)
+    results: list[dict] | None = None,
+    model: ModelSpec | None = None,
+    tps: tuple[int, ...] = (1,),
+    engine: str = "vllm",
 ) -> list[MeasuredConfig]:
-    """Configs vLLM ran for `model`. Single-GPU only by default (what the fits use)."""
+    """Configs `engine` ran for `model`. Single-GPU only by default (what the fits use)."""
     results = load_results() if results is None else results
     model = load_model() if model is None else model
     eff = gpu_efficiency(results)
     out = []
     for tp in tps:
-        for (gpu, quant), r in latest(results, "vllm", model.name, tp).items():
+        for (gpu, quant), r in latest(results, engine, model.name, tp).items():
             if gpu not in eff:
                 continue
             try:
@@ -166,10 +200,10 @@ def measured_configs(
     return out
 
 
-def fits(results: list[dict] | None = None, model: ModelSpec | None = None) -> list[Fit]:
+def fits(results: list[dict] | None = None, model: ModelSpec | None = None, engine: str = "vllm") -> list[Fit]:
     out = []
-    for c in measured_configs(results, model):
-        v = c.run["result"]["vllm"]
+    for c in measured_configs(results, model, engine=engine):
+        v = c.run["result"][engine]
         xt = [(1.0, c._roof_ttft(t["prompt_len"])) for t in v["ttft"]]
         yt = [t["ttft_s_median"] for t in v["ttft"]]
         c0, c1 = _lsq2(xt, yt)
@@ -213,10 +247,10 @@ def efficiency_table(results: list[dict] | None = None) -> str:
     return "\n".join(rows)
 
 
-def fit_table(results: list[dict] | None = None) -> str:
-    fs = fits(results)
+def fit_table(results: list[dict] | None = None, engine: str = "vllm") -> str:
+    fs = fits(results, engine=engine)
     if not fs:
-        return "_No vLLM runs with decode-step measurements yet._"
+        return f"_No {ENGINE_NAMES[engine]} runs with decode-step measurements yet._"
     rows = [
         "| GPU | Quant | TTFT c0 (ms) | TTFT c1 | TTFT max error | Decode a | Decode b (µs/seq) | Decode max error | Run |",
         "|---|---|---:|---:|---:|---:|---:|---:|---|",

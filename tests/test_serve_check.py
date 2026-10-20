@@ -40,3 +40,17 @@ def test_comparison_table():
     # A run with a different load is not this prediction's measurement.
     other = {**run, "serve": {**p["serve"], "rps": 1.0}}
     assert "not run yet" in sc.comparison_table([other], {"k": p})
+
+
+def test_serve_runs_match_configs_by_model():
+    """Qwen-7B, Granite and Qwen-32B all have an H100 FP8 config; each serve run must be
+    predicted from its own model's curves."""
+    from capacity_planner import validation as v
+    from capacity_planner.models import registry
+    from capacity_planner.recommend import serve_runs
+
+    results = v.load_results()
+    configs = [c for m in registry() for c in candidate_configs(m, results)]
+    pairs = serve_runs(results, configs)
+    assert pairs and all(c.model.name == r.get("model") and c.tp == r.get("tp", 1) for r, c, _ in pairs)
+    assert {r["id"] for r, _, _ in pairs} >= {"044-h100-serve-qwen32b-fp8-chat", "043-h100-serve-granite8b-fp8-longctx"}

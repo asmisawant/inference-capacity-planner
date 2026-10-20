@@ -296,11 +296,11 @@ NO_CALIBRATION = ServeCalibration(0.0, {}, ())
 
 
 def serve_runs(results: list[dict], configs: list[MeasuredConfig]) -> list[tuple[dict, MeasuredConfig, Workload]]:
-    by_key = {c.key: c for c in configs}
+    by_key = {(c.model.name, *c.key): c for c in configs}
     out = []
     for r in results:
-        c = by_key.get((r["gpu"], r["quant"], r.get("tp", 1)))
-        if r["suite"] == "serve" and c is not None and same_setup(r, c.model.name, c.tp):
+        c = by_key.get((r.get("model", DEFAULT_MODEL), r["gpu"], r["quant"], r.get("tp", 1)))
+        if r["suite"] == "serve" and c is not None:
             s = r["serve"]
             w = Workload(s["prompt"], s["output"], s["rps"], ttft_slo_s=1e9, tpot_slo_s=1e9)
             out.append((r, c, w))
@@ -312,13 +312,19 @@ def serve_calibration(
     configs: list[MeasuredConfig] | None = None,
     exclude: frozenset[str] = frozenset(),
 ) -> ServeCalibration:
-    """Fit overhead and margins on serve runs, leaving out run ids in `exclude`."""
+    """Fit overhead and margins on serve runs, leaving out run ids in `exclude`.
+
+    By default every serve run counts, for any model: a run is predicted from the configs
+    the recommender would use for its model (measured, or transferred from Qwen-7B)."""
     import statistics
 
+    from .models import registry
+    from .transfer import candidate_configs
     from .validation import load_results
 
     results = load_results() if results is None else results
-    configs = measured_configs(results) if configs is None else configs
+    if configs is None:
+        configs = [c for m in registry() for c in candidate_configs(m, results)]
     preds = []
     for r, c, w in serve_runs(results, configs):
         q = predict(c, w, r["serve"]["max_num_seqs"])
@@ -348,7 +354,7 @@ def recommend(
     from .transfer import candidate_configs
 
     configs = candidate_configs(model) if configs is None else configs
-    cal = serve_calibration(configs=configs if model == DEFAULT_MODEL else None) if cal is None else cal
+    cal = serve_calibration() if cal is None else cal
     recs = [
         evaluate(c, w, cal(c.gpu.name), cal.overhead_s) for c in configs if quants is None or c.quant.name in quants
     ]
@@ -407,7 +413,7 @@ EXAMPLES = (
 
 def examples_markdown(top: int = 3) -> str:
     configs = measured_configs()
-    cal = serve_calibration(configs=configs)
+    cal = serve_calibration()
     parts = []
     for name, w in EXAMPLES:
         recs = recommend(w, configs=configs, cal=cal)

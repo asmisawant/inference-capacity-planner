@@ -389,6 +389,12 @@
       "gpu": "L4",
       "suite": "sglang",
       "quant": "bf16"
+    },
+    {
+      "id": "049-l4-sglang-bf16",
+      "gpu": "L4",
+      "suite": "sglang",
+      "quant": "bf16"
     }
   ]
 }

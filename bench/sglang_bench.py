@@ -96,7 +96,9 @@ def main() -> None:
     }
 
     def generate(prompts: list[list[int]], max_tokens: int) -> tuple[list[dict], float]:
-        sp = {"max_new_tokens": max_tokens, "min_new_tokens": max_tokens, "ignore_eos": True, "temperature": 0.0}
+        # ignore_eos alone fixes the output length (checked below); min_new_tokens would need
+        # the tokenizer, which is skipped as in the vLLM bench (detokenize=False).
+        sp = {"max_new_tokens": max_tokens, "ignore_eos": True, "temperature": 0.0}
         t = time.perf_counter()
         outs = engine.generate(input_ids=prompts, sampling_params=sp)
         return outs, time.perf_counter() - t

@@ -377,6 +377,12 @@
         "rps": 0.952,
         "max_num_seqs": 20
       }
+    },
+    {
+      "id": "047-l4-sglang-bf16",
+      "gpu": "L4",
+      "suite": "sglang",
+      "quant": "bf16"
     }
   ]
 }

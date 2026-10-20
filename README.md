@@ -94,7 +94,7 @@ GPU runs are launched by GitHub Actions (`.github/workflows/bench.yml`) on [Moda
 - **Results:** each run is committed as `results/<id>.json` together with the tables below, which the workflow regenerates.
 
 Spend so far: <!-- BEGIN GENERATED: bench_spend -->
-70 runs (55 succeeded), at most **$13.87** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
+74 runs (59 succeeded), at most **$15.00** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
 <!-- END GENERATED: bench_spend -->
 
 Configurations that did not run: **FP8 on A100-80GB** fails at vLLM 0.30.0 engine startup twice, in two different places: in torch.compile (run 016, `InductorError: auto_functionalized was not removed`) and, with the eager compile backend, in the CUTLASS FP8 GEMM (run 022, `cutlass_scaled_mm_sm80_epilogue`). The A100 has no FP8 tensor cores, so this is vLLM's weight-only FP8 path. Not retried.
@@ -388,22 +388,20 @@ The cheapest $/hr wins; ties go to less quantization, then lower TPOT.
 | GPU | Engine | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | A100-40GB | vLLM | bf16 | 1 | 2.10 | 0.091 | 0.455 | 29 (110) | 242 (×1.05) | 22.0 | 360,528 | 012-a100-40gb-vllm-bf16 |
-| A100-40GB | SGLang ³ | bf16 | 1 | 2.10 | 0.091 | 0.455 | 31 (93) | 286 (×1.05) | 23.8 | 333,296 | 061-a100-40gb-sglang-bf16 |
 | A100-80GB | vLLM | bf16 | 1 | 2.50 | 0.108 | 0.542 | 23 (117) | 230 (×1.06) | 17.6 | 1,045,408 | 013-a100-80gb-vllm-bf16 |
+| A100-80GB | vLLM | awq-int4 | 1 | 2.50 | 0.108 | 0.542 | 16 (89) | 310 (×1.06) | 11.9 | 1,231,408 | 020-a100-80gb-vllm-awq-int4 |
 
-Not feasible: L4 vLLM bf16 (misses SLO: TPOT 57.6 ms at batch 1); L4 SGLang bf16 (misses SLO: TPOT 57.3 ms at batch 1); L4 SGLang awq-int4 (queueing keeps p90 TTFT above target).
-
-³ no load test on this engine yet: serving overhead and p90 margins are borrowed from vLLM's serve runs.
+Not feasible: A10G SGLang bf16 (queueing keeps p90 TTFT above target); L4 SGLang bf16 (misses SLO: TPOT 57.3 ms at batch 1); L4 vLLM bf16 (misses SLO: TPOT 57.6 ms at batch 1); L4 SGLang fp8 (queueing keeps p90 TTFT above target); A10G SGLang awq-int4 (queueing keeps p90 TTFT above target); L4 SGLang awq-int4 (queueing keeps p90 TTFT above target).
 
 **Long-context interactive:** 2048-token prompts, 256-token outputs, 20 requests/s, TTFT ≤ 300 ms, TPOT ≤ 30 ms.
 
 | GPU | Engine | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | H100 | vLLM | bf16 | 2 | 7.90 | 0.048 | 0.429 | 42 (98) | 269 (×1.28) | 16.1 | 1,035,104 | 014-h100-vllm-bf16 |
-| H100 | vLLM | fp8 | 2 | 7.90 | 0.048 | 0.429 | 23 (131) | 167 (×1.28) | 8.7 | 1,149,168 | 017-h100-vllm-fp8 |
-| H100 | vLLM | awq-int4 | 2 | 7.90 | 0.048 | 0.429 | 38 (93) | 264 (×1.28) | 14.6 | 1,203,072 | 021-h100-vllm-awq-int4 |
+| H100 | SGLang | bf16 | 2 | 7.90 | 0.048 | 0.429 | 44 (96) | 194 (×1.00) | 16.9 | 951,951 | 053-h100-sglang-bf16 |
+| H100 | SGLang | fp8 | 2 | 7.90 | 0.048 | 0.429 | 22 (130) | 104 (×1.00) | 8.4 | 1,062,434 | 056-h100-sglang-fp8 |
 
-Not feasible: A10G vLLM bf16 (misses SLO: TTFT 446 ms at batch 1, TPOT 34.2 ms at batch 1); L4 vLLM bf16 (misses SLO: TTFT 563 ms at batch 1, TPOT 58.8 ms at batch 1); L4 vLLM fp8 (misses SLO: TTFT 438 ms at batch 1, TPOT 36.4 ms at batch 1); A10G vLLM awq-int4 (misses SLO: TTFT 465 ms at batch 1); L4 vLLM awq-int4 (misses SLO: TTFT 595 ms at batch 1); A10G SGLang bf16 (misses SLO: TTFT 522 ms at batch 1, TPOT 33.8 ms at batch 1); L4 SGLang bf16 (misses SLO: TTFT 592 ms at batch 1, TPOT 58.5 ms at batch 1); L4 SGLang fp8 (misses SLO: TTFT 404 ms at batch 1, TPOT 33.6 ms at batch 1); A10G SGLang awq-int4 (misses SLO: TTFT 496 ms at batch 1); L4 SGLang awq-int4 (misses SLO: TTFT 742 ms at batch 1).
+Not feasible: A100-40GB SGLang bf16 (queueing keeps p90 TTFT above target); A100-80GB SGLang bf16 (queueing keeps p90 TTFT above target); A10G SGLang bf16 (misses SLO: TTFT 522 ms at batch 1, TPOT 33.8 ms at batch 1); A10G vLLM bf16 (misses SLO: TTFT 446 ms at batch 1, TPOT 34.2 ms at batch 1); L4 SGLang bf16 (misses SLO: TTFT 592 ms at batch 1, TPOT 58.5 ms at batch 1); L4 vLLM bf16 (misses SLO: TTFT 563 ms at batch 1, TPOT 58.8 ms at batch 1); A100-80GB SGLang fp8 (queueing keeps p90 TTFT above target); L4 SGLang fp8 (misses SLO: TTFT 404 ms at batch 1, TPOT 33.6 ms at batch 1); L4 vLLM fp8 (misses SLO: TTFT 438 ms at batch 1, TPOT 36.4 ms at batch 1); A100-80GB SGLang awq-int4 (queueing keeps p90 TTFT above target); A10G SGLang awq-int4 (misses SLO: TTFT 496 ms at batch 1); A10G vLLM awq-int4 (misses SLO: TTFT 465 ms at batch 1); L4 SGLang awq-int4 (misses SLO: TTFT 742 ms at batch 1); L4 vLLM awq-int4 (misses SLO: TTFT 595 ms at batch 1).
 
 **Offline batch generation:** 512-token prompts, 512-token outputs, 50 requests/s, TTFT ≤ 5000 ms, TPOT ≤ 200 ms.
 
@@ -411,9 +409,7 @@ Not feasible: A10G vLLM bf16 (misses SLO: TTFT 446 ms at batch 1, TPOT 34.2 ms a
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | H100 | vLLM | bf16 | 2 | 7.90 | 0.043 | 0.086 | 222 (256) | 174 (×1.28) | 17.3 | 1,035,104 | 014-h100-vllm-bf16 |
 | H100 | vLLM | fp8 | 2 | 7.90 | 0.043 | 0.086 | 124 (256) | 111 (×1.28) | 9.6 | 1,149,168 | 017-h100-vllm-fp8 |
-| H100 | SGLang ³ | fp8 | 2 | 7.90 | 0.043 | 0.086 | 146 (256) | 133 (×1.28) | 11.3 | 1,062,434 | 056-h100-sglang-fp8 |
-
-³ no load test on this engine yet: serving overhead and p90 margins are borrowed from vLLM's serve runs.
+| H100 | SGLang | fp8 | 2 | 7.90 | 0.043 | 0.086 | 146 (256) | 75 (×1.00) | 11.3 | 1,062,434 | 056-h100-sglang-fp8 |
 <!-- END GENERATED: recommend_examples -->
 
 ### Validation under real load
@@ -501,28 +497,24 @@ Once a model has been run, the recommender uses the measured curves. Every other
 | GPU | Engine | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | A100-40GB | vLLM | bf16 | 1 | 2.10 | 0.091 | 0.455 | 51 (73) | 364 (×1.05) | 39.3 | 128,784 | 034-a100-40gb-vllm-granite8b-bf16 |
-| A100-40GB | SGLang ³ | bf16 | 1 | 2.10 | 0.091 | 0.455 | 53 (70) | 415 (×1.05) | 40.9 | 109,875 | predicted ² from 061-a100-40gb-sglang-bf16 |
 | A100-80GB | vLLM | bf16 | 1 | 2.50 | 0.108 | 0.542 | 36 (82) | 316 (×1.06) | 27.7 | 359,109 | predicted ² from 013-a100-80gb-vllm-bf16 |
+| H100 | vLLM | bf16 | 1 | 3.95 | 0.171 | 0.857 | 13 (221) | 124 (×1.28) | 9.5 | 360,704 | 035-h100-vllm-granite8b-bf16 |
 
-Not feasible: L4 vLLM bf16 (misses SLO: TPOT 66.7 ms at batch 1).
+Not feasible: L4 vLLM bf16 (misses SLO: TPOT 66.7 ms at batch 1); L4 SGLang fp8 (queueing keeps p90 TTFT above target).
 
 ² never run for this model: curves transferred from the named Qwen2.5-7B run (see "Predicting models we never benchmarked").
-
-³ no load test on this engine yet: serving overhead and p90 margins are borrowed from vLLM's serve runs.
 
 **Qwen2.5-32B-Instruct, chat assistant:** 1024-token prompts, 256-token outputs, 5 requests/s, TTFT ≤ 500 ms, TPOT ≤ 50 ms.
 
 | GPU | Engine | Quant | Replicas | $/hr | $/1M tokens (in+out) | $/1M output tokens | Busy slots (max_num_seqs) | TTFT ms p90 (× margin) | TPOT ms | KV cache tokens | Run |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | H100 | vLLM | fp8 | 1 | 3.95 | 0.171 | 0.857 | 42 (86) | 345 (×1.28) | 32.1 | 147,328 | 037-h100-vllm-qwen32b-fp8 |
-| H100 | SGLang ³ | fp8 | 1 | 3.95 | 0.171 | 0.857 | 45 (81) | 372 (×1.28) | 34.5 | 134,689 | predicted ² from 056-h100-sglang-fp8 |
+| H100 | SGLang | fp8 | 1 | 3.95 | 0.171 | 0.857 | 45 (81) | 261 (×1.00) | 34.5 | 134,689 | predicted ² from 056-h100-sglang-fp8 |
 | 2× H100 | vLLM | bf16 | 1 | 7.90 | 0.343 | 1.714 | 30 (114) | 271 (×1.28) | 22.9 | 319,280 | 039-h100x2-vllm-qwen32b-bf16 |
 
-Not feasible: A10G vLLM awq-int4 (misses SLO: TTFT 1089 ms at batch 1); L4 vLLM awq-int4 (misses SLO: TTFT 1442 ms at batch 1, TPOT 64.4 ms at batch 1).
+Not feasible: 2× A100-40GB SGLang bf16 (queueing keeps p90 TTFT above target); A100-80GB SGLang bf16 (queueing keeps p90 TTFT above target); 2× A100-80GB SGLang bf16 (queueing keeps p90 TTFT above target); A100-80GB SGLang fp8 (queueing keeps p90 TTFT above target); 2× A100-80GB SGLang fp8 (queueing keeps p90 TTFT above target); A100-80GB SGLang awq-int4 (queueing keeps p90 TTFT above target); 2× A100-80GB SGLang awq-int4 (queueing keeps p90 TTFT above target); A10G vLLM awq-int4 (misses SLO: TTFT 1089 ms at batch 1); L4 vLLM awq-int4 (misses SLO: TTFT 1442 ms at batch 1, TPOT 64.4 ms at batch 1).
 
 ² never run for this model: curves transferred from the named Qwen2.5-7B run (see "Predicting models we never benchmarked").
-
-³ no load test on this engine yet: serving overhead and p90 margins are borrowed from vLLM's serve runs.
 <!-- END GENERATED: recommend_other_models -->
 
 ### Do those recommendations hold under real load?
@@ -680,10 +672,12 @@ Predictions were frozen in `predictions/serve-sglang.json` before the runs.
 <!-- BEGIN GENERATED: serve_sglang_check -->
 | Model | Workload | Replica | Curves | Load per replica (req/s, max_num_seqs) | TTFT ms p50: predicted / measured | TTFT ms p90: predicted / measured (error) | p90 × margin vs target | Margin covers measured p90 | TPOT ms: predicted / measured (target) | Targets met | Run |
 |---|---|---|---|---|---:|---:|---|---|---:|---|---|
-| Qwen2.5-7B-Instruct | Chat assistant (1 replica) | A100-40GB bf16 (SGLang) | 061-a100-40gb-sglang-bf16 | 5, 93 | 142 / – | 272 / – | 286 vs 500 | – | 23.8 / – (50) | – | not run yet |
-| Qwen2.5-7B-Instruct | Long-context interactive (2 replicas) | H100 bf16 (SGLang) | 053-h100-sglang-bf16 | 10, 96 | 114 / – | 223 / – | 286 vs 300 | – | 16.9 / – (30) | – | not run yet |
-| Qwen2.5-7B-Instruct | Offline batch generation (2 replicas) | H100 fp8 (SGLang) | 056-h100-sglang-fp8 | 25, 256 | 68 / – | 104 / – | 133 vs 5000 | – | 11.3 / – (200) | – | not run yet |
-| Granite-3.1-8B-Instruct | Chat assistant (1 replica) | A100-40GB bf16 (SGLang) | predicted from 061-a100-40gb-sglang-bf16 | 5, 70 | 182 / – | 395 / – | 415 vs 500 | – | 40.9 / – (50) | – | not run yet |
+| Qwen2.5-7B-Instruct | Chat assistant (1 replica) | A100-40GB bf16 (SGLang) | 061-a100-40gb-sglang-bf16 | 5, 93 | 142 / 117 | 272 / 214 (+27%) | 286 vs 500 | yes | 23.8 / 25.4 (50) | yes | [062-a100-40gb-sglang-serve-qwen7b-bf16-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39400553348) |
+| Qwen2.5-7B-Instruct | Long-context interactive (2 replicas) | H100 bf16 (SGLang) | 053-h100-sglang-bf16 | 10, 96 | 114 / 82 | 223 / 184 (+21%) | 286 vs 300 | yes | 16.9 / 14.3 (30) | yes | [063-h100-sglang-serve-qwen7b-bf16-longctx](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39400553348) |
+| Qwen2.5-7B-Instruct | Offline batch generation (2 replicas) | H100 fp8 (SGLang) | 056-h100-sglang-fp8 | 25, 256 | 68 / 36 | 104 / 46 (+128%) | 133 vs 5000 | yes | 11.3 / 13.5 (200) | yes | [064-h100-sglang-serve-qwen7b-fp8-offline](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39400553348) |
+| Granite-3.1-8B-Instruct | Chat assistant (1 replica) | A100-40GB bf16 (SGLang) | predicted from 061-a100-40gb-sglang-bf16 | 5, 70 | 182 / 287 | 395 / 1394 (-72%) | 415 vs 500 | **no** | 40.9 / 49.1 (50) | **no** | [065-a100-40gb-sglang-serve-granite8b-bf16-chat](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39400553348) |
+
+Over 4 runs, the median |error| is 38% for p50 TTFT, 49% for p90 TTFT and 16% for TPOT.
 <!-- END GENERATED: serve_sglang_check -->
 
 ## Development

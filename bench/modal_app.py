@@ -44,11 +44,16 @@ SGLANG_IMAGE = (
     "lmsysorg/sglang@sha256:2dbe4c7f53230b09aaa8fa41891c13c51d9d2e253f486a70822aaf08783fff75"
 )
 
+# The SGLang image already has files under /root/.cache/huggingface, and Modal can't mount
+# a volume on a non-empty path, so the same volume goes elsewhere here (the cache layout is
+# relative to HF_HOME, so cached weights are found the same way).
+SGLANG_HF_CACHE = "/hf-cache"
+
 sglang_image = (
     modal.Image.from_registry(SGLANG_IMAGE)
     .entrypoint([])
     .run_commands('command -v python || ln -s "$(command -v python3)" /usr/local/bin/python')
-    .env({"HF_HOME": HF_CACHE, "HF_XET_HIGH_PERFORMANCE": "1"})
+    .env({"HF_HOME": SGLANG_HF_CACHE, "HF_XET_HIGH_PERFORMANCE": "1"})
     .add_local_python_source("bench", "capacity_planner", ignore=["**/__pycache__/**"])
 )
 
@@ -159,7 +164,7 @@ class Bench:
         return run_child(module, args)
 
 
-@app.cls(image=sglang_image, gpu="L4", volumes={HF_CACHE: hf_volume}, timeout=30 * 60)
+@app.cls(image=sglang_image, gpu="L4", volumes={SGLANG_HF_CACHE: hf_volume}, timeout=30 * 60)
 class SGLangBench:
     @modal.method()
     def run(

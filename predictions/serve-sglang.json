@@ -1,0 +1,114 @@
+{
+  "method": "capacity_planner.serve_check: recommender output for one replica at its share of the load",
+  "serving_overhead_s": 0.0425028179389893,
+  "predictions": {
+    "Qwen2.5-7B-Instruct|Chat assistant|A100-40GB|bf16|tp1|sglang": {
+      "model": "Qwen2.5-7B-Instruct",
+      "gpu": "A100-40GB",
+      "quant": "bf16",
+      "tp": 1,
+      "workload": "Chat assistant",
+      "slo": {
+        "ttft_p90_s": 0.5,
+        "tpot_s": 0.05
+      },
+      "total_rps": 5,
+      "replicas": 1,
+      "curves": "061-a100-40gb-sglang-bf16",
+      "serve": {
+        "prompt": 1024,
+        "output": 256,
+        "rps": 5.0,
+        "max_num_seqs": 93
+      },
+      "ttft_p50_s": 0.14177359886636545,
+      "ttft_p90_s": 0.27212128167226896,
+      "ttft_margin": 1.0509924771167818,
+      "tpot_s": 0.023759626692472485,
+      "busy_batch": 31,
+      "engine": "sglang",
+      "calibration": "borrowed from vLLM (no serve runs on this engine)"
+    },
+    "Qwen2.5-7B-Instruct|Long-context interactive|H100|bf16|tp1|sglang": {
+      "model": "Qwen2.5-7B-Instruct",
+      "gpu": "H100",
+      "quant": "bf16",
+      "tp": 1,
+      "workload": "Long-context interactive",
+      "slo": {
+        "ttft_p90_s": 0.3,
+        "tpot_s": 0.03
+      },
+      "total_rps": 20,
+      "replicas": 2,
+      "curves": "053-h100-sglang-bf16",
+      "serve": {
+        "prompt": 2048,
+        "output": 256,
+        "rps": 10.0,
+        "max_num_seqs": 96
+      },
+      "ttft_p50_s": 0.11375770781239546,
+      "ttft_p90_s": 0.2226964662250685,
+      "ttft_margin": 1.2836053426609662,
+      "tpot_s": 0.016945913323869966,
+      "busy_batch": 44,
+      "engine": "sglang",
+      "calibration": "borrowed from vLLM (no serve runs on this engine)"
+    },
+    "Qwen2.5-7B-Instruct|Offline batch generation|H100|fp8|tp1|sglang": {
+      "model": "Qwen2.5-7B-Instruct",
+      "gpu": "H100",
+      "quant": "fp8",
+      "tp": 1,
+      "workload": "Offline batch generation",
+      "slo": {
+        "ttft_p90_s": 5.0,
+        "tpot_s": 0.2
+      },
+      "total_rps": 50,
+      "replicas": 2,
+      "curves": "056-h100-sglang-fp8",
+      "serve": {
+        "prompt": 512,
+        "output": 512,
+        "rps": 25.0,
+        "max_num_seqs": 256
+      },
+      "ttft_p50_s": 0.06828517319482345,
+      "ttft_p90_s": 0.1037794116992244,
+      "ttft_margin": 1.2836053426609662,
+      "tpot_s": 0.01134872677863916,
+      "busy_batch": 146,
+      "engine": "sglang",
+      "calibration": "borrowed from vLLM (no serve runs on this engine)"
+    },
+    "Granite-3.1-8B-Instruct|Chat assistant|A100-40GB|bf16|tp1|sglang": {
+      "model": "Granite-3.1-8B-Instruct",
+      "gpu": "A100-40GB",
+      "quant": "bf16",
+      "tp": 1,
+      "workload": "Chat assistant",
+      "slo": {
+        "ttft_p90_s": 0.5,
+        "tpot_s": 0.05
+      },
+      "total_rps": 5,
+      "replicas": 1,
+      "curves": "predicted from 061-a100-40gb-sglang-bf16",
+      "serve": {
+        "prompt": 1024,
+        "output": 256,
+        "rps": 5.0,
+        "max_num_seqs": 70
+      },
+      "ttft_p50_s": 0.1819716371720977,
+      "ttft_p90_s": 0.3952571040126526,
+      "ttft_margin": 1.0509924771167818,
+      "tpot_s": 0.04085219188614418,
+      "busy_batch": 53,
+      "engine": "sglang",
+      "calibration": "borrowed from vLLM (no serve runs on this engine)"
+    }
+  }
+}

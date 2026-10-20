@@ -103,6 +103,9 @@ SECTIONS = {
     "recommend_other_models": lambda: recommend.other_models_markdown(),
     "serve_check": lambda: serve_check.comparison_table(),
     "engine_comparison": lambda: engines.comparison_table(),
+    "serve_sglang_check": lambda: serve_check.comparison_table(
+        preds=serve_check.load_predictions(serve_check.SGLANG_CHECK_PREDICTIONS)
+    ),
     "calibration_fits_sglang": lambda: calibration.fit_table(engine="sglang"),
     "serve_margin_check": lambda: serve_check.comparison_table(
         preds=serve_check.load_predictions(serve_check.MARGIN_CHECK_PREDICTIONS)

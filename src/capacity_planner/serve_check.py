@@ -20,7 +20,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from .recommend import EXAMPLES, Workload, evaluate, predict, serve_calibration
+from .recommend import EXAMPLES, Workload, engine_calibrations, evaluate, predict
 from .transfer import candidate_configs
 from .validation import load_results
 
@@ -61,12 +61,28 @@ TARGETS = (
 MARGIN_CHECK = (ServeTarget("Qwen2.5-32B-Instruct", "Long-context interactive", "H100", "fp8"),)
 MARGIN_CHECK_PREDICTIONS = PREDICTIONS_DIR / "serve-h100-margin.json"
 
-SETS = {"step5": (TARGETS, PREDICTIONS), "h100-margin": (MARGIN_CHECK, MARGIN_CHECK_PREDICTIONS)}
+# SGLang's own recommendations (step 6), before SGLang has any serve run: its curves are
+# measured (or, for Granite, transferred from Qwen-7B), but the serving overhead and p90
+# margins are borrowed from vLLM. These runs test both.
+SGLANG_CHECK = (
+    ServeTarget("Qwen2.5-7B-Instruct", "Chat assistant", "A100-40GB", "bf16", engine="sglang"),
+    ServeTarget("Qwen2.5-7B-Instruct", "Long-context interactive", "H100", "bf16", engine="sglang"),
+    ServeTarget("Qwen2.5-7B-Instruct", "Offline batch generation", "H100", "fp8", engine="sglang"),
+    ServeTarget("Granite-3.1-8B-Instruct", "Chat assistant", "A100-40GB", "bf16", engine="sglang"),
+)
+SGLANG_CHECK_PREDICTIONS = PREDICTIONS_DIR / "serve-sglang.json"
+
+SETS = {
+    "step5": (TARGETS, PREDICTIONS),
+    "h100-margin": (MARGIN_CHECK, MARGIN_CHECK_PREDICTIONS),
+    "sglang": (SGLANG_CHECK, SGLANG_CHECK_PREDICTIONS),
+}
+SERVE_SUITE = {"vllm": "serve", "sglang": "sglang-serve"}
 
 
 def serve_prediction(t: ServeTarget, results: list[dict] | None = None) -> dict:
     results = load_results() if results is None else results
-    cal = serve_calibration(results)
+    cal, load_tested = engine_calibrations(results)[t.engine]
     w = WORKLOADS[t.workload]
     configs = {c.key: c for c in candidate_configs(t.model, results) if c.engine == t.engine}
     c = configs[(t.gpu, t.quant, t.tp)]
@@ -76,7 +92,7 @@ def serve_prediction(t: ServeTarget, results: list[dict] | None = None) -> dict:
     rps = round(w.rps / rec.replicas, 3)
     per_replica = Workload(w.prompt_len, w.output_len, rps, w.ttft_slo_s, w.tpot_slo_s)
     q = predict(c, per_replica, rec.max_num_seqs, cal.overhead_s)
-    return {
+    out = {
         "model": t.model, "gpu": t.gpu, "quant": t.quant, "tp": t.tp,
         "workload": t.workload,
         "slo": {"ttft_p90_s": w.ttft_slo_s, "tpot_s": w.tpot_slo_s},
@@ -91,11 +107,15 @@ def serve_prediction(t: ServeTarget, results: list[dict] | None = None) -> dict:
         "tpot_s": q.busy.tpot_s,
         "busy_batch": q.busy.batch,
     }
+    if t.engine != "vllm":  # the step 5 files predate engines: no key means vLLM
+        out["engine"] = t.engine
+        out["calibration"] = "own serve runs" if load_tested else "borrowed from vLLM (no serve runs on this engine)"
+    return out
 
 
 def predictions(targets=TARGETS, results: list[dict] | None = None) -> dict:
     results = load_results() if results is None else results
-    cal = serve_calibration(results)
+    cal = engine_calibrations(results)["vllm"][0]
     return {
         "method": "capacity_planner.serve_check: recommender output for one replica at its share of the load",
         "serving_overhead_s": cal.overhead_s,
@@ -112,7 +132,7 @@ def measured_run(results: list[dict], p: dict) -> dict | None:
     found = None
     for r in results:
         if (
-            r["suite"] == "serve" and r.get("model") == p["model"] and r["gpu"] == p["gpu"]
+            r["suite"] == SERVE_SUITE[p.get("engine", "vllm")] and r.get("model") == p["model"] and r["gpu"] == p["gpu"]
             and r["quant"] == p["quant"] and r.get("tp", 1) == p["tp"] and r["serve"] == p["serve"]
         ):
             found = r
@@ -140,7 +160,7 @@ def comparison_table(results: list[dict] | None = None, preds: dict | None = Non
         gpus = p["gpu"] if p["tp"] == 1 else f"{p['tp']}× {p['gpu']}"
         head = (
             f"| {p['model']} | {p['workload']} ({p['replicas']} replica{'s' if p['replicas'] > 1 else ''}) "
-            f"| {gpus} {p['quant']} | {p['curves']} | {s['rps']:g}, {s['max_num_seqs']} "
+            f"| {gpus} {p['quant']}{' (SGLang)' if p.get('engine') == 'sglang' else ''} | {p['curves']} | {s['rps']:g}, {s['max_num_seqs']} "
         )
         safe = p["ttft_p90_s"] * p["ttft_margin"]
         slo_ttft, slo_tpot = p["slo"]["ttft_p90_s"], p["slo"]["tpot_s"]

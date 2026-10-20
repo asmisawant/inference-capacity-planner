@@ -622,6 +622,28 @@ difference for both engines.
 | H100 | fp8 | 0.92 / 0.83 | 1,149,168 / 1,062,434 | 7 / 11 | 18 / 20 | 68 / 67 | 4.2 / 3.3 | 256: 9.7 / 9.7 | [017-h100-vllm-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) · [056-h100-sglang-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417) |
 <!-- END GENERATED: engine_comparison -->
 
+What the two engines do differently with the same model and GPU (runs 049–061):
+
+- **Decode is close.** At batch 1 SGLang's step is equal or faster everywhere, most
+  clearly with quantized weights (FP8 and AWQ on H100 and A100). At large batches the
+  engines trade places: SGLang is slower with AWQ on H100 and BF16 on A100-80GB, and
+  faster with AWQ on A100-80GB.
+- **TTFT has a fixed extra cost on SGLang.** The cost is largest for short prompts and
+  fades by 4,000 tokens for BF16 and FP8. Part of it is measurement: SGLang's TTFT covers
+  its whole request path. AWQ is the exception: SGLang's 4,000-token prefill is about
+  twice vLLM's on H100 and 10–25% slower on L4 and A10G.
+- **SGLang keeps more memory free by default.** On 24 GB cards (L4, A10G) its default
+  memory fraction is far below vLLM's, which leaves about 5–6× fewer KV tokens in BF16.
+  That is why BF16 on those cards can only run small batches in SGLang. On 40 and 80 GB
+  cards SGLang holds 7–9% fewer.
+- **FP8 on A100 works in SGLang.** It failed at startup in vLLM 0.30 (runs 016, 022), so
+  SGLang adds a configuration vLLM couldn't run.
+- One SGLang A100-40GB run (051) landed on an 80 GB card. Results whose GPU memory doesn't
+  match the requested GPU are now left out of every table and fit, and 061 replaced it.
+
+The recommender now picks the engine too. Each SGLang config is evaluated like a vLLM one,
+and on equal cost a load-tested engine wins.
+
 The same correction fits as for vLLM (TTFT = c0 + c1 × roofline, decode = a × roofline + b × batch), for SGLang:
 
 <!-- BEGIN GENERATED: calibration_fits_sglang -->
@@ -640,6 +662,29 @@ The same correction fits as for vLLM (TTFT = c0 + c1 × roofline, decode = a × 
 | H100 | bf16 | 6.9 | 1.28 | 5% | 1.12 | 7 | 11% | 053-h100-sglang-bf16 |
 | H100 | fp8 | 6.0 | 1.64 | 3% | 1.27 | 6 | 17% | 056-h100-sglang-fp8 |
 <!-- END GENERATED: calibration_fits_sglang -->
+
+### Do SGLang's recommendations hold under load?
+
+SGLang has no load tests yet, so its recommendations borrow vLLM's serving overhead and
+p90 margins. Four SGLang recommendations, the recommender's top SGLang choice for each
+workload, are load-tested with SGLang's own server and load tool:
+
+- Qwen-7B, chat, on A100-40GB.
+- Qwen-7B, long context, on H100 BF16.
+- Qwen-7B, offline batch, on H100 FP8, at 25 req/s per replica.
+- Granite-8B, chat, on A100-40GB. Its curves are only transferred from Qwen-7B's SGLang
+  run.
+
+Predictions were frozen in `predictions/serve-sglang.json` before the runs.
+
+<!-- BEGIN GENERATED: serve_sglang_check -->
+| Model | Workload | Replica | Curves | Load per replica (req/s, max_num_seqs) | TTFT ms p50: predicted / measured | TTFT ms p90: predicted / measured (error) | p90 × margin vs target | Margin covers measured p90 | TPOT ms: predicted / measured (target) | Targets met | Run |
+|---|---|---|---|---|---:|---:|---|---|---:|---|---|
+| Qwen2.5-7B-Instruct | Chat assistant (1 replica) | A100-40GB bf16 (SGLang) | 061-a100-40gb-sglang-bf16 | 5, 93 | 142 / – | 272 / – | 286 vs 500 | – | 23.8 / – (50) | – | not run yet |
+| Qwen2.5-7B-Instruct | Long-context interactive (2 replicas) | H100 bf16 (SGLang) | 053-h100-sglang-bf16 | 10, 96 | 114 / – | 223 / – | 286 vs 300 | – | 16.9 / – (30) | – | not run yet |
+| Qwen2.5-7B-Instruct | Offline batch generation (2 replicas) | H100 fp8 (SGLang) | 056-h100-sglang-fp8 | 25, 256 | 68 / – | 104 / – | 133 vs 5000 | – | 11.3 / – (200) | – | not run yet |
+| Granite-3.1-8B-Instruct | Chat assistant (1 replica) | A100-40GB bf16 (SGLang) | predicted from 061-a100-40gb-sglang-bf16 | 5, 70 | 182 / – | 395 / – | 415 vs 500 | – | 40.9 / – (50) | – | not run yet |
+<!-- END GENERATED: serve_sglang_check -->
 
 ## Development
 

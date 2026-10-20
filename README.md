@@ -94,7 +94,7 @@ GPU runs are launched by GitHub Actions (`.github/workflows/bench.yml`) on [Moda
 - **Results:** each run is committed as `results/<id>.json` together with the tables below, which the workflow regenerates.
 
 Spend so far: <!-- BEGIN GENERATED: bench_spend -->
-58 runs (43 succeeded), at most **$11.10** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
+69 runs (54 succeeded), at most **$13.73** of GPU time (runner wall-clock × Modal GPU price × 1.1 for CPU/RAM).
 <!-- END GENERATED: bench_spend -->
 
 Configurations that did not run: **FP8 on A100-80GB** fails at vLLM 0.30.0 engine startup twice, in two different places: in torch.compile (run 016, `InductorError: auto_functionalized was not removed`) and, with the eager compile backend, in the CUTLASS FP8 GEMM (run 022, `cutlass_scaled_mm_sm80_epilogue`). The A100 has no FP8 tensor cores, so this is vLLM's weight-only FP8 path. Not retried.
@@ -600,17 +600,18 @@ difference for both engines.
 <!-- BEGIN GENERATED: engine_comparison -->
 | GPU | Quant | Memory fraction for weights + KV: vLLM / SGLang | KV tokens: vLLM / SGLang | TTFT ms at 128: vLLM / SGLang | TTFT ms at 1024: vLLM / SGLang | TTFT ms at 4000: vLLM / SGLang | Decode step ms at batch 1: vLLM / SGLang | Largest batch both ran: step ms vLLM / SGLang | Runs |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---|
-| L4 | awq-int4 | 0.92 / – | 246,528 / – | 41 / – | 288 / – | 1194 / – | 19.0 / – | – | [018-l4-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
+| L4 | awq-int4 | 0.92 / 0.68 | 246,528 / 178,501 | 41 / 59 | 288 / 341 | 1194 / 1491 | 19.0 / 18.1 | 128: 62.1 / 62.3 | [018-l4-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) · [057-l4-sglang-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417) |
 | L4 | bf16 | 0.92 / 0.68 | 60,816 / 11,639 | 71 / 126 | 257 / 298 | 1034 / 1056 | 56.5 / 56.0 | 16: 60.9 / 60.5 | [006-l4-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39222305725) · [049-l4-sglang-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39393658297) |
-| L4 | fp8 | 0.92 / – | 190,512 / – | 44 / – | 190 / – | 836 / – | 34.5 / – | – | [015-l4-vllm-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
-| A10G | awq-int4 | 0.92 / – | 246,480 / – | 32 / – | 228 / – | 907 / – | 10.8 / – | – | [019-a10g-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
-| A10G | bf16 | 0.92 / – | 60,512 / – | 41 / – | 211 / – | 928 / – | 32.4 / – | – | [011-a10g-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223773836) |
-| A100-40GB | bf16 | 0.92 / – | 360,528 / – | 20 / – | 68 / – | 255 / – | 12.2 / – | – | [012-a100-40gb-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
-| A100-80GB | awq-int4 | 0.92 / – | 1,231,408 / – | 16 / – | 91 / – | 359 / – | 4.8 / – | – | [020-a100-80gb-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
-| A100-80GB | bf16 | 0.92 / – | 1,045,408 / – | 15 / – | 68 / – | 260 / – | 10.1 / – | – | [013-a100-80gb-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223773836) |
-| H100 | awq-int4 | 0.92 / – | 1,203,072 / – | 8 / – | 25 / – | 96 / – | 4.2 / – | – | [021-h100-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
-| H100 | bf16 | 0.92 / – | 1,035,104 / – | 9 / – | 24 / – | 91 / – | 6.1 / – | – | [014-h100-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
-| H100 | fp8 | 0.92 / – | 1,149,168 / – | 7 / – | 18 / – | 68 / – | 4.2 / – | – | [017-h100-vllm-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) |
+| L4 | fp8 | 0.92 / 0.68 | 190,512 / 122,114 | 44 / 72 | 190 / 198 | 836 / 785 | 34.5 / 31.8 | 128: 63.7 / 62.7 | [015-l4-vllm-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) · [054-l4-sglang-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417) |
+| A10G | awq-int4 | 0.92 / 0.68 | 246,480 / 177,846 | 32 / 43 | 228 / 255 | 907 / 999 | 10.8 / 10.0 | 128: 45.9 / 45.8 | [019-a10g-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) · [058-a10g-sglang-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417) |
+| A10G | bf16 | 0.92 / 0.68 | 60,512 / 10,625 | 41 / 73 | 211 / 258 | 928 / 944 | 32.4 / 31.7 | 8: 33.4 / 33.4 | [011-a10g-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223773836) · [050-a10g-sglang-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417) |
+| A100-40GB | bf16 | 0.92 / 0.83 | 360,528 / 956,292 | 20 / 25 | 68 / 75 | 255 / 262 | 12.2 / 9.3 | 256: 26.5 / 25.1 | [012-a100-40gb-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) · [051-a100-40gb-sglang-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417) |
+| A100-80GB | awq-int4 | 0.92 / 0.83 | 1,231,408 / 1,123,204 | 16 / 19 | 91 / 83 | 359 / 321 | 4.8 / 3.5 | 256: 33.0 / 27.5 | [020-a100-80gb-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) · [059-a100-80gb-sglang-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417) |
+| A100-80GB | bf16 | 0.92 / 0.83 | 1,045,408 / 956,292 | 15 / 26 | 68 / 82 | 260 / 290 | 10.1 / 9.5 | 256: 25.9 / 28.7 | [013-a100-80gb-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223773836) · [052-a100-80gb-sglang-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417) |
+| A100-80GB | fp8 | – / 0.83 | – / 1,061,837 | – / 21 | – / 85 | – / 327 | – / 5.6 | – | [055-a100-80gb-sglang-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417) |
+| H100 | awq-int4 | 0.92 / 0.83 | 1,203,072 / 1,118,863 | 8 / 13 | 25 / 48 | 96 / 188 | 4.2 / 2.7 | 256: 11.6 / 16.1 | [021-h100-vllm-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) · [060-h100-sglang-awq-int4](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417) |
+| H100 | bf16 | 0.92 / 0.83 | 1,035,104 / 951,951 | 9 / 14 | 24 / 29 | 91 / 97 | 6.1 / 5.4 | 256: 11.6 / 11.3 | [014-h100-vllm-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) · [053-h100-sglang-bf16](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417) |
+| H100 | fp8 | 0.92 / 0.83 | 1,149,168 / 1,062,434 | 7 / 11 | 18 / 20 | 68 / 67 | 4.2 / 3.3 | 256: 9.7 / 9.7 | [017-h100-vllm-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39223120807) · [056-h100-sglang-fp8](https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417) |
 <!-- END GENERATED: engine_comparison -->
 
 The same correction fits as for vLLM (TTFT = c0 + c1 × roofline, decode = a × roofline + b × batch), for SGLang:
@@ -618,7 +619,18 @@ The same correction fits as for vLLM (TTFT = c0 + c1 × roofline, decode = a × 
 <!-- BEGIN GENERATED: calibration_fits_sglang -->
 | GPU | Quant | TTFT c0 (ms) | TTFT c1 | TTFT max error | Decode a | Decode b (µs/seq) | Decode max error | Run |
 |---|---|---:|---:|---:|---:|---:|---:|---|
+| L4 | awq-int4 | -7.9 | 1.42 | 37% | 0.81 | 229 | 5% | 057-l4-sglang-awq-int4 |
 | L4 | bf16 | 63.9 | 0.93 | 6% | 0.96 | 124 | 2% | 049-l4-sglang-bf16 |
+| L4 | fp8 | 22.6 | 1.36 | 7% | 0.94 | 104 | 2% | 054-l4-sglang-fp8 |
+| A10G | awq-int4 | 13.1 | 1.37 | 4% | 0.82 | 197 | 14% | 058-a10g-sglang-awq-int4 |
+| A10G | bf16 | 41.4 | 1.26 | 10% | 1.04 | 128 | 1% | 050-a10g-sglang-bf16 |
+| A100-40GB | bf16 | 13.8 | 1.17 | 5% | 0.90 | 35 | 6% | 051-a100-40gb-sglang-bf16 |
+| A100-80GB | awq-int4 | 7.6 | 1.43 | 11% | 1.40 | 34 | 28% | 059-a100-80gb-sglang-awq-int4 |
+| A100-80GB | bf16 | 14.5 | 1.26 | 2% | 1.12 | 47 | 7% | 052-a100-80gb-sglang-bf16 |
+| A100-80GB | fp8 | 8.7 | 1.45 | 14% | 1.24 | 42 | 13% | 055-a100-80gb-sglang-fp8 |
+| H100 | awq-int4 | 4.5 | 2.60 | 21% | 1.65 | 29 | 22% | 060-h100-sglang-awq-int4 |
+| H100 | bf16 | 6.9 | 1.28 | 5% | 1.12 | 7 | 11% | 053-h100-sglang-bf16 |
+| H100 | fp8 | 6.0 | 1.64 | 3% | 1.27 | 6 | 17% | 056-h100-sglang-fp8 |
 <!-- END GENERATED: calibration_fits_sglang -->
 
 ## Development

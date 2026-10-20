@@ -1,0 +1,319 @@
+{
+  "cost_usd_upper_bound": 0.0742141143718639,
+  "finished_at": "2026-10-20T08:39:11+00:00",
+  "git_sha": "171e6fabbba0650dc8ef37c7bbb61ee748167875",
+  "github_run_url": "https://github.com/asmisawant/inference-capacity-planner/actions/runs/39394458417",
+  "gpu": "A10G",
+  "gpu_call_s": 210.655985691,
+  "id": "050-a10g-sglang-bf16",
+  "modal_gpu": "A10G",
+  "model": "Qwen2.5-7B-Instruct",
+  "model_revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+  "price_per_hour": 1.1,
+  "quant": "bf16",
+  "reached_modal": true,
+  "result": {
+    "gpu_info": {
+      "clocks.max.memory": "6251",
+      "clocks.max.sm": "1710",
+      "driver_version": "610.57.04",
+      "memory.total": "23028",
+      "name": "NVIDIA A10G",
+      "power.limit": "300.00"
+    },
+    "sglang": {
+      "decode": [
+        {
+          "batch": 1,
+          "decode_context_len": 640,
+          "decode_step_s": 0.03173046951562486,
+          "decode_tokens_per_s": 31.51544919647582,
+          "e2e_per_output_token_s_median": 0.03300858667708321,
+          "engine_span_s": 6.3376486419999765,
+          "engine_span_short_s": 2.2761485439999944,
+          "output_len": 192,
+          "output_len_short": 64,
+          "output_tokens_per_s": 30.295147434902674,
+          "prompt_len": 512,
+          "wall_s": 6.338483321000012
+        },
+        {
+          "batch": 2,
+          "decode_context_len": 640,
+          "decode_step_s": 0.03258592847656261,
+          "decode_tokens_per_s": 61.376185780267015,
+          "e2e_per_output_token_s_median": 0.03373711280468757,
+          "engine_span_s": 6.47753210800002,
+          "engine_span_short_s": 2.3065332630000057,
+          "output_len": 192,
+          "output_len_short": 64,
+          "output_tokens_per_s": 59.28183660035342,
+          "prompt_len": 512,
+          "wall_s": 6.478316156000005
+        },
+        {
+          "batch": 4,
+          "decode_context_len": 640,
+          "decode_step_s": 0.0328515965234375,
+          "decode_tokens_per_s": 121.7596836472242,
+          "e2e_per_output_token_s_median": 0.03514848177343747,
+          "engine_span_s": 6.748521941000007,
+          "engine_span_short_s": 2.543517586000007,
+          "output_len": 192,
+          "output_len_short": 64,
+          "output_tokens_per_s": 113.80269734830209,
+          "prompt_len": 512,
+          "wall_s": 6.749512323000005
+        },
+        {
+          "batch": 8,
+          "decode_context_len": 640,
+          "decode_step_s": 0.03340423683593752,
+          "decode_tokens_per_s": 239.49057837457622,
+          "e2e_per_output_token_s_median": 0.0378585943411458,
+          "engine_span_s": 7.268851764000004,
+          "engine_span_short_s": 2.993109449000002,
+          "output_len": 192,
+          "output_len_short": 64,
+          "output_tokens_per_s": 211.31260477855014,
+          "prompt_len": 512,
+          "wall_s": 7.270279455000008
+        },
+        {
+          "batch": 16,
+          "skipped": "exceeds KV cache or max_running_requests"
+        },
+        {
+          "batch": 32,
+          "skipped": "exceeds KV cache or max_running_requests"
+        },
+        {
+          "batch": 64,
+          "skipped": "exceeds KV cache or max_running_requests"
+        },
+        {
+          "batch": 128,
+          "skipped": "exceeds KV cache or max_running_requests"
+        },
+        {
+          "batch": 256,
+          "skipped": "exceeds KV cache or max_running_requests"
+        }
+      ],
+      "engine": {
+        "enable_prefix_caching": false,
+        "kv_cache_size_tokens": 10625,
+        "max_model_len": 4096,
+        "max_num_seqs": 256,
+        "max_req_input_len": 4090,
+        "mem_fraction_static": 0.684
+      },
+      "init_s": 113.970230214,
+      "meta_info_keys": [
+        "cached_tokens",
+        "cached_tokens_details",
+        "completion_tokens",
+        "dp_rank",
+        "e2e_latency",
+        "finish_reason",
+        "id",
+        "num_retractions",
+        "prompt_tokens",
+        "reasoning_tokens",
+        "response_sent_to_client_ts",
+        "weight_version",
+        "weight_versions"
+      ],
+      "model": "Qwen/Qwen2.5-7B-Instruct",
+      "quantization": null,
+      "revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+      "server_args": {
+        "attention_backend": "flashinfer",
+        "chunked_prefill_size": 4096,
+        "context_length": 4096,
+        "cuda_graph_max_bs": null,
+        "disable_radix_cache": true,
+        "dtype": "auto",
+        "kv_cache_dtype": "auto",
+        "max_prefill_tokens": 16384,
+        "max_running_requests": 256,
+        "mem_fraction_static": 0.684,
+        "quantization": null,
+        "sampling_backend": "flashinfer",
+        "schedule_policy": "fcfs",
+        "tp_size": 1
+      },
+      "sglang_version": "0.5.21",
+      "tensor_parallel_size": 1,
+      "ttft": [
+        {
+          "prompt_len": 128,
+          "trials": [
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.1537054069999897,
+              "wall_s": 0.15443258399997717
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.07092358500000273,
+              "wall_s": 0.07162468100000297
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.07246520999999007,
+              "wall_s": 0.07289954899999884
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.07260113300000626,
+              "wall_s": 0.07303500199998325
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.07283998799999836,
+              "wall_s": 0.07324096700000382
+            }
+          ],
+          "ttft_s_median": 0.07260113300000626,
+          "wall_s_median": 0.07303500199998325
+        },
+        {
+          "prompt_len": 512,
+          "trials": [
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.16388374600001043,
+              "wall_s": 0.16434676700001205
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.16331315300001847,
+              "wall_s": 0.16393356699998662
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.1631367189999935,
+              "wall_s": 0.1639206670000135
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.16177489800000444,
+              "wall_s": 0.1623412309999992
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.16468988399998352,
+              "wall_s": 0.1653802300000109
+            }
+          ],
+          "ttft_s_median": 0.16331315300001847,
+          "wall_s_median": 0.16393356699998662
+        },
+        {
+          "prompt_len": 1024,
+          "trials": [
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.25812107499999115,
+              "wall_s": 0.2588112899999828
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.25838770100000374,
+              "wall_s": 0.2590060249999908
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.2593965810000043,
+              "wall_s": 0.26011806800002546
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.25787268799999197,
+              "wall_s": 0.25845632100001126
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.2578589270000009,
+              "wall_s": 0.25830769699999223
+            }
+          ],
+          "ttft_s_median": 0.25812107499999115,
+          "wall_s_median": 0.2588112899999828
+        },
+        {
+          "prompt_len": 2048,
+          "trials": [
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.49132476200000497,
+              "wall_s": 0.4919522750000169
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.49009556799998677,
+              "wall_s": 0.49080176399999687
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.49013823500001763,
+              "wall_s": 0.490899431999992
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.4897603349999997,
+              "wall_s": 0.4903956489999928
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.4902923759999851,
+              "wall_s": 0.4909445220000066
+            }
+          ],
+          "ttft_s_median": 0.49013823500001763,
+          "wall_s_median": 0.490899431999992
+        },
+        {
+          "prompt_len": 4000,
+          "trials": [
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.9445079440000086,
+              "wall_s": 0.9452181289999828
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.9436247739999999,
+              "wall_s": 0.944237687999987
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.944655795999978,
+              "wall_s": 0.9453083310000068
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.9442507359999865,
+              "wall_s": 0.9449556110000117
+            },
+            {
+              "completion_tokens": 1,
+              "e2e_latency_s": 0.9442221080000195,
+              "wall_s": 0.9449888139999985
+            }
+          ],
+          "ttft_s_median": 0.9442507359999865,
+          "wall_s_median": 0.9449888139999985
+        }
+      ]
+    }
+  },
+  "serve": null,
+  "start_attempts": 1,
+  "started_at": "2026-10-20T08:35:30+00:00",
+  "status": "ok",
+  "suite": "sglang",
+  "tp": 1,
+  "wall_s": 220.802323751
+}

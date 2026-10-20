@@ -526,6 +526,13 @@
       "suite": "sglang",
       "quant": "bf16",
       "model": "Granite-3.1-8B-Instruct"
+    },
+    {
+      "id": "067-a100-40gb-sglang-granite8b-bf16",
+      "gpu": "A100-40GB",
+      "suite": "sglang",
+      "quant": "bf16",
+      "model": "Granite-3.1-8B-Instruct"
     }
   ]
 }
